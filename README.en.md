@@ -1,0 +1,244 @@
+**English** | [简体中文](./README.md)
+
+<p align="center">
+  <img src="https://capsule-render.vercel.app/api?type=waving&color=0:b91c1c,100:f59e0b&height=200&section=header&text=PromptShield&fontSize=72&fontColor=ffffff&fontAlignY=38&desc=Scan%20the%20code%20your%20Coding%20Agent%20reads%2C%20before%20it%20obeys%20hidden%20instructions&descSize=16&descAlignY=58" alt="PromptShield" />
+</p>
+
+<p align="center">
+  <strong>PromptShield is the prompt-injection scanner that audits code your Claude Code agent reads.</strong>
+</p>
+
+<p align="center">
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
+  <img src="https://img.shields.io/badge/python-3.12%2B-blue.svg" alt="Python 3.12+" />
+  <img src="https://img.shields.io/badge/release-v0.1.0-f59e0b.svg" alt="Release v0.1.0" />
+  <a href="./.github/workflows/ci.yml"><img src="https://img.shields.io/badge/CI-ruff%20%2B%20pytest-success.svg" alt="CI" /></a>
+  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs welcome" />
+  <br/>
+  <img src="https://img.shields.io/badge/agentic-coding%20security-7c3aed.svg" alt="Agentic coding security" />
+  <img src="https://img.shields.io/badge/offline-no%20API%20key-0ea5e9.svg" alt="Offline, no API key" />
+</p>
+
+---
+
+## Table of contents
+
+- [Why this exists](#why-this-exists)
+- [Quickstart](#quickstart)
+- [Demo](#demo)
+- [What it scans](#what-it-scans)
+- [Use it in CI](#use-it-in-ci)
+- [Baseline workflow](#baseline-workflow)
+- [vs the alternatives](#vs-the-alternatives)
+- [Configuration](#configuration)
+- [Pricing · PromptShield Cloud](#pricing--promptshield-cloud)
+- [Roadmap](#roadmap)
+- [License & contributing](#license--contributing)
+- [Share this](#share-this)
+
+---
+
+## Why this exists
+
+A **Coding Agent** like Claude Code or Cursor reads third-party repos, PRs, code comments, and commit messages **straight into its context window**, then acts on what it read — but no layer between the repo and the agent scans that text *as a prompt*.
+
+That is exactly the attack surface exposed by the [r/LocalLLaMA "dev sneaks data-nuking prompt injection into their code"](https://www.reddit.com/r/LocalLLaMA/comments/1trdnap/fed_up_with_vibe_coders_dev_sneaks_datanuking/) thread: someone buried an `rm -rf /` destruction instruction inside a comment, waiting for someone else's agent to read and obey it. A human reviewer's eyes cannot match the agent's reading throughput — this is a **structural throughput asymmetry**, not something "review harder" fixes.
+
+**Why now:** the normalization of agentic coding turned "code an agent reads" into "code an agent obeys." Cursor alone is cited at over a million developers, and Claude Code power-user repos like [affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code) have agents routinely pulling external PRs and vendored OSS into context. Two years ago the dominant pattern was a human copy-pasting snippets into chat — there was no autonomous read-and-execute loop over external repos. The MCP / tool-calling expansion of agent autonomy is what gave a hidden instruction a path to action. PromptShield puts that injection surface behind a CI gate *before* the agent reads it — offline, no API key, results in seconds.
+
+The new primitive is the **Finding over a code-as-prompt surface**: treating source text the agent will *read* as an attack vector, not as code to execute or a package to CVE-scan. This is a distinct threat class from chat-jailbreak scanning (Garak) and dependency-vuln scanning (Socket / Snyk).
+
+---
+
+## Quickstart
+
+```bash
+pip install promptshield           # or: uvx promptshield
+promptshield scan .                # scan the current repo, print a findings table
+echo "exit code: $?"               # 1 if any HIGH finding — drops straight into CI
+```
+
+<details>
+<summary>Sample output (scanning the bundled malicious-PR reproduction)</summary>
+
+```text
+$ promptshield scan ./tests/fixtures/malicious_pr
+
+                          PromptShield findings
+┏━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━┓
+┃ Sev  ┃ Rule                          ┃ Category        ┃ Location    ┃ Surf ┃
+┡━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━┩
+│ HIGH │ PS001-instruction-override-d… │ instruction_ov… │ utils.py:11 │ com… │
+│ HIGH │ PS010-destructive-shell       │ data_destructi… │ utils.py:12 │ com… │
+│ HIGH │ PS011-destructive-instruction │ data_destructi… │ utils.py:17 │ doc… │
+│ HIGH │ PS020-exfil-secrets           │ exfiltration    │ utils.py:17 │ doc… │
+└──────┴───────────────────────────────┴─────────────────┴─────────────┴──────┘
+
+Scanned 31 surfaces · 8 HIGH · 0 MED · 0 LOW
+✗ HIGH findings present — exit 1 (CI gate failed).
+```
+
+Every HIGH carries a `why` line explaining why it is an injection — precision over recall, so you can trust each flag.
+</details>
+
+`promptshield scan .` needs neither `git` nor `gh` and makes no network calls. They are only invoked as subprocesses when you use `--diff` / `--pr`.
+
+---
+
+## Demo
+
+Script: scan `malicious_pr` → findings table → `--pr` exits 1 (CI goes red) → the real Reddit data-nuking injection flagged on camera.
+
+[![asciicast](https://asciinema.org/a/PLACEHOLDER.svg)](https://asciinema.org/a/PLACEHOLDER)
+
+> 📼 Placeholder above. The recording script is [`assets/demo.tape`](./assets/demo.tape); a static preview is [`assets/demo.svg`](./assets/demo.svg). To produce the real asciicast that the README embeds, run `asciinema rec` under the same commands as `assets/demo.tape`.
+
+![demo](./assets/demo.svg)
+
+---
+
+## What it scans
+
+PromptShield decomposes a repo or diff into **Surface** records (every span of text the agent will read), then a YAML rule engine maps each Surface to zero-or-more **Finding** records.
+
+**Surfaces scanned (the code-as-prompt surface):** code comments · docstrings · commit messages · markdown / README · config files · string literals.
+
+**Five threat categories (seed ruleset, v0.1):**
+
+| Category | Meaning | Example rules |
+| --- | --- | --- |
+| `instruction_override` | Directly addresses the agent, tells it to ignore prior instructions | `PS001` `PS002` `PS003` |
+| `data_destructive` | Delete / wipe data (the Reddit attack class) | `PS010` `PS011` `PS012` |
+| `exfiltration` | Read secrets and send them outbound | `PS020` `PS021` `PS022` |
+| `tool_abuse` | Coax the agent into skipping confirmation / abusing tool autonomy | `PS030` `PS031` |
+| `obfuscation` | Zero-width / bidi Unicode, encoded payloads that evade human review | `PS040` `PS041` |
+
+Three severities: **HIGH** (fails CI) · **MED** · **LOW**. To cut false positives, noisy-verb rules are gated behind a `requires` clause — they fire only when paired with agent-steering or all-encompassing wording ("all / recursively / production database"), so a plain "delete the temp cache" comment won't trip them.
+
+---
+
+## Use it in CI
+
+Copy the bundled [`.github/workflows/promptshield.yml`](./.github/workflows/promptshield.yml) into any repo's `.github/workflows/` and every PR is gated automatically:
+
+- **On a PR:** `promptshield scan --diff origin/<base>` scans only the changed Surfaces (added lines + new commit messages).
+- **On push to main:** `promptshield scan .` scans the whole tree.
+- Any **HIGH** finding exits 1 and turns the check red.
+
+You can also wire it in by hand:
+
+```bash
+# scan only this branch's changes vs main
+promptshield scan --diff origin/main
+
+# scan a gh api PR-files JSON (no full-history checkout needed in CI)
+gh api repos/OWNER/REPO/pulls/123/files > pr.json
+promptshield scan --pr pr.json        # exit 1 if any HIGH
+```
+
+---
+
+## Baseline workflow
+
+On a noisy legacy repo, accept all current Findings first, then alert only on **new** injections:
+
+```bash
+promptshield scan . --update-baseline        # writes .promptshield-baseline.yaml, exits 0
+git add .promptshield-baseline.yaml
+promptshield scan .                          # old Findings suppressed, only new ones reported
+```
+
+Baselines suppress by fingerprint (`rule_id` + file + excerpt hash), so if a genuinely new injection sneaks in, it still surfaces.
+
+---
+
+## vs the alternatives
+
+Positioning, not bragging — honest where a competitor is actually better.
+
+vs [affaan-m/ECC](https://github.com/affaan-m/ECC) (a Claude Code / Cursor power-user config repo, representing the "agent routinely ingests external code" workflow):
+
+| Capability | PromptShield | Garak / PromptBench | Socket / Snyk |
+| --- | :---: | :---: | :---: |
+| Injection in **source comments / commits / markdown** | ✓ | ✗ | ✗ |
+| Offline, zero API key, results in seconds | ✓ | partial | ✓ |
+| Dependency CVEs / supply-chain vulns | ✗ | ✗ | ✓ |
+| Chat-jailbreak / red-team corpus maturity | partial | ✓ | ✗ |
+| One-line PR gating (GitHub Action) | ✓ | partial | ✓ |
+
+Garak is more mature on **chat-prompt** red-teaming, and Socket / Snyk are unbeatable on the **dependency supply chain** — they are complementary to PromptShield. PromptShield owns the one thing none of them touch: scanning the source text your coding agent *reads into context and acts on*, as a prompt.
+
+---
+
+## Configuration
+
+Main options of the `scan` command:
+
+| Option | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `PATH` | path | `.` | Directory or file to scan |
+| `--diff REF` | string | none | Scan only added lines + new commit messages of `git diff REF` |
+| `--pr FILE.json` | path | none | Scan a `gh api .../files` PR-files JSON document |
+| `--baseline FILE` | path | `.promptshield-baseline.yaml` | Baseline of accepted Findings to suppress |
+| `--update-baseline` | flag | `false` | Write all current Findings to the baseline and exit 0 |
+| `--rules FILE` | path | bundled ruleset | Use a custom `rules.yaml` |
+| `--json` | flag | `false` | Emit machine-readable JSON instead of the Rich table |
+| `--no-color` | flag | `false` | Disable colored output |
+| `--repo DIR` | path | `.` | Repository directory for `--diff` |
+
+> `--diff` and `--pr` are mutually exclusive.
+
+---
+
+## Pricing · PromptShield Cloud
+
+**The CLI and GitHub Action are free and open-source forever** — they are the funnel. Revenue comes from a hosted **PromptShield Cloud** team tier that turns the team-coordination layer above the CLI into a subscription.
+
+| | Open-source CLI / Action | PromptShield Cloud (team tier) |
+| --- | --- | --- |
+| Local / CI scanning | ✓ | ✓ |
+| Five-category seed ruleset | ✓ | ✓ |
+| Single-repo baseline | ✓ | ✓ |
+| **Org-wide PR gating** (unified policy across repos) | ✗ | ✓ |
+| **Shared / central baselines** (cross-repo) | ✗ | ✓ |
+| **Central findings dashboard** | ✗ | ✓ |
+| **Slack / Feishu alerts** (push on a HIGH finding) | ✗ | ✓ |
+| Managed attack-signature / rule feed | ✗ | ✓ |
+
+**Pricing:** **$8 / seat / month** (annual), or a **$99 / month** flat team plan up to 15 seats — undercuts a Snyk seat while being a clear "team coordination" upsell over the free CLI.
+
+**Smallest "here's my credit card" path:** the Cloud dashboard ingests a team's existing Action output via a token → shows org-wide findings + a shared cross-repo baseline → 14-day trial → Stripe Checkout self-serve. The demo that closes: **your 6 repos, one dashboard, one baseline, a Slack alert on a HIGH finding.**
+
+> Target customers: 5–30-dev AI-tooling and security teams already running Claude Code / Cursor against vendored OSS and external PRs. Want to be a design partner? Open an [issue](https://github.com/SuperMarioYL/promptshield/issues).
+
+---
+
+## Roadmap
+
+- [x] **m1 — `scan <path>`**: walk a repo, extract comments / docstrings / markdown / string literals into Surfaces, run the YAML rule engine, print a Rich findings table + severity counts.
+- [x] **m2 — diff & CI**: `scan --diff <ref>` (git diff added lines) + `scan --pr <file.json>` (gh PR-files JSON), HIGH → exit 1, plus the `promptshield.yml` Action.
+- [x] **m3 — baseline & demo**: `.promptshield-baseline.yaml` suppression; `tests/fixtures/malicious_pr/` reproducing the real Reddit data-nuking injection; asciinema demo; bilingual README.
+- [ ] Semantic detection (opt-in) — layered on top of regex / heuristics to raise recall against evasion.
+- [ ] Managed attack-signature / rule feed (PromptShield Cloud).
+- [ ] GitHub Marketplace listing + placement in awesome-claude-code / awesome-ai-coding lists.
+
+> Explicitly out of scope for v0.1: Web UI / dashboard, LLM semantic detection, per-language AST parsing, auto-remediation, IDE / editor plugins, SARIF / SBOM output, custom-trained classifier.
+
+---
+
+## License & contributing
+
+[MIT](./LICENSE). PRs and issues welcome — found a false positive or a miss? Open an [issue](https://github.com/SuperMarioYL/promptshield/issues) with a minimal reproduction and we'll tighten the rules around it.
+
+See [CHANGELOG.md](./CHANGELOG.md) for release notes.
+
+---
+
+## Share this
+
+```text
+PromptShield — scan the code your Claude Code / Cursor agent reads for hidden
+prompt injection, before it obeys it. Offline, zero API key, one-line CI gate.
+Catches the Reddit rm -rf data-nuking injection live.
+https://github.com/SuperMarioYL/promptshield
+```

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+.venv*/
+venv/
+.env
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+
+# build scaffolding (not part of the project)
+.claude/
+CLAUDE.md
+.builder_prompt.md
+.build_metadata.yaml
+.build_metadata.slices.yaml
+.spawn.*
+.builder_*
+.build_metadata*
+.stage_*
+BUILD_SETUP_NEXT_STEPS.md

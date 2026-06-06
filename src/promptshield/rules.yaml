@@ -1,0 +1,172 @@
+# PromptShield seed ruleset (v0.1)
+#
+# Each rule maps a code-as-prompt Surface (comment / docstring / commit message
+# / markdown / config / string literal) to a Finding. Patterns are case-
+# insensitive regexes. A rule fires when ANY `patterns` entry matches; if
+# `requires` is present, ALL of its patterns must ALSO match (used to gate noisy
+# verbs behind agent-steering language to cut false positives).
+#
+# Categories (exactly the five the spec names):
+#   instruction_override | data_destructive | exfiltration | tool_abuse | obfuscation
+#
+# Severity: HIGH (fails CI) | MED | LOW.
+
+rules:
+  # ---------------------------------------------------------------------------
+  # instruction_override — hidden directives aimed at the agent itself
+  # ---------------------------------------------------------------------------
+  - id: PS001-instruction-override-direct
+    severity: HIGH
+    category: instruction_override
+    why: >-
+      Text directly addresses an AI assistant and tells it to ignore prior
+      instructions — the classic prompt-injection override aimed at a coding
+      agent reading this file.
+    patterns:
+      - "ignore (all |any |the )?(previous|prior|above|earlier|preceding) (instructions|prompts|rules|directions)"
+      - "disregard (all |any |the )?(previous|prior|above|system) (instructions|prompts|rules)"
+      - "forget (everything|all|your) (previous |prior )?(instructions|context|rules)"
+
+  - id: PS002-agent-addressed-imperative
+    severity: HIGH
+    category: instruction_override
+    why: >-
+      Text speaks to an AI agent by name (assistant, Claude, Cursor, Copilot…)
+      and issues an instruction — code comments should never address the agent.
+    patterns:
+      - "\\b(ai|assistant|language model|llm|claude|cursor|copilot|codex|chatgpt|gpt)\\b[^.]{0,40}\\b(you must|you should|please|always|never|do not|now)\\b"
+      - "<\\s*system\\s*>|\\[\\s*system\\s*\\]|###\\s*system"
+    requires:
+      - "\\b(you|your|assistant|ai|model|please|must|should|now)\\b"
+
+  - id: PS003-role-reassignment
+    severity: MED
+    category: instruction_override
+    why: >-
+      Attempts to redefine the agent's role or persona ("you are now…"), a
+      common jailbreak framing smuggled into a docstring or README.
+    patterns:
+      - "you are (now )?(a |an )?(developer mode|dan|unrestricted|admin|root|jailbroken)"
+      - "(act|behave|respond) as (if you are |an? )?(unrestricted|developer|admin|root)"
+
+  # ---------------------------------------------------------------------------
+  # data_destructive — instructions to delete / wipe data (the Reddit attack)
+  # ---------------------------------------------------------------------------
+  - id: PS010-destructive-shell
+    severity: HIGH
+    category: data_destructive
+    why: >-
+      A data-destroying shell command (rm -rf, mkfs, dd, drop database) embedded
+      in readable text — the exact data-nuking payload class from the Reddit
+      incident, planted where a coding agent will read and may run it.
+    patterns:
+      - "rm\\s+-[a-z]*r[a-z]*f|rm\\s+-[a-z]*f[a-z]*r"
+      - "\\bmkfs\\.|\\bdd\\s+if=/dev/(zero|random|urandom)\\b"
+      - "drop\\s+(database|table|schema)\\b"
+      - ":\\(\\)\\s*\\{\\s*:\\|:&\\s*\\}"  # fork bomb
+
+  - id: PS011-destructive-instruction
+    severity: HIGH
+    category: data_destructive
+    why: >-
+      A natural-language instruction to delete or wipe files/data, gated to fire
+      only when paired with agent-steering or all-encompassing wording so plain
+      "delete the temp file" comments don't trip it.
+    patterns:
+      - "(delete|wipe|erase|destroy|nuke|purge|remove)\\b[^.]{0,30}\\b(all|every|entire|whole|the database|production|user data|/|home directory|repo)"
+    requires:
+      - "(all|every|entire|whole|production|database|user data|home|recursively|without (asking|confirmation)|silently)"
+
+  - id: PS012-credential-deletion
+    severity: MED
+    category: data_destructive
+    why: >-
+      Instruction to remove credentials, backups, or snapshots — destructive
+      prep that often precedes a larger payload.
+    patterns:
+      - "(delete|remove|disable|drop)\\b[^.]{0,30}\\b(backups?|snapshots?|credentials?|access[_-]?keys?|api[_-]?keys?|ssh keys?|auth tokens?)"
+
+  # ---------------------------------------------------------------------------
+  # exfiltration — instructions to leak secrets / send data outbound
+  # ---------------------------------------------------------------------------
+  - id: PS020-exfil-secrets
+    severity: HIGH
+    category: exfiltration
+    why: >-
+      Text instructs reading secrets/env/keys and sending them to an external
+      destination — credential exfiltration steered through ingested code.
+    multiline: true
+    patterns:
+      - "(send|post|upload|exfiltrate|leak|forward|transmit)\\b.{0,40}?\\b(env|environment|secret|api[_-]?key|token|credential|password|\\.ssh|private key)"
+    requires:
+      - "(http|https|curl|wget|webhook|to (an? )?(external|remote|server|url|endpoint)|attacker)"
+
+  - id: PS021-exfil-network-callout
+    severity: MED
+    category: exfiltration
+    why: >-
+      A curl/wget POST of local data to a remote URL described in prose — a
+      data-exfiltration callout hidden in a comment or docstring.
+    patterns:
+      - "(curl|wget|fetch|invoke-webrequest)\\b[^\\n]{0,60}\\b(-d|--data|-X\\s*POST|--upload-file|@)"
+    requires:
+      - "https?://"
+
+  - id: PS022-env-dump
+    severity: LOW
+    category: exfiltration
+    why: >-
+      References dumping the full environment / printenv near network wording —
+      weak signal of a staged exfiltration step.
+    patterns:
+      - "\\b(printenv|env\\s*\\||os\\.environ|process\\.env)\\b"
+    requires:
+      - "(send|post|upload|http|webhook|curl|wget)"
+
+  # ---------------------------------------------------------------------------
+  # tool_abuse — instructions to misuse the agent's tools / autonomy
+  # ---------------------------------------------------------------------------
+  - id: PS030-autonomy-escalation
+    severity: HIGH
+    category: tool_abuse
+    why: >-
+      Text tells the agent to act without confirmation, bypass safety, or
+      auto-approve — coaxing the agent into unsupervised destructive actions.
+    patterns:
+      - "(without|skip|bypass|don'?t|do not)\\s+(asking|confirmation|approval|review|the user|permission)"
+      - "(auto[- ]?approve|auto[- ]?run|auto[- ]?confirm|run\\s+immediately|execute\\s+silently)"
+    requires:
+      - "(you|agent|assistant|run|execute|command|tool|approve|confirm|silently|immediately)"
+
+  - id: PS031-shell-execution-steer
+    severity: MED
+    category: tool_abuse
+    why: >-
+      Text instructs the agent to run a shell command or script it found,
+      turning passive code into an execution request.
+    patterns:
+      - "(run|execute|invoke)\\b[^.]{0,30}\\b(this (command|script|shell)|the following (command|script)|in (a |the )?(terminal|shell|subprocess))"
+
+  # ---------------------------------------------------------------------------
+  # obfuscation — hidden / encoded text designed to evade human review
+  # ---------------------------------------------------------------------------
+  - id: PS040-zero-width-or-bidi
+    severity: HIGH
+    category: obfuscation
+    why: >-
+      Contains zero-width or bidirectional Unicode control characters used to
+      hide instructions from a human reviewer while the agent still reads them.
+    patterns:
+      - "[\\u200b\\u200c\\u200d\\u2060\\ufeff\\u202a-\\u202e\\u2066-\\u2069]"
+
+  - id: PS041-encoded-payload
+    severity: MED
+    category: obfuscation
+    why: >-
+      A long base64 / hex blob described as something to decode-and-run — a
+      classic way to smuggle a payload past a casual reviewer.
+    patterns:
+      - "[A-Za-z0-9+/]{40,}={0,2}"
+      - "(\\\\x[0-9a-f]{2}){8,}"
+    requires:
+      - "(decode|base64|eval|exec|run|execute|payload|atob|fromhex)"

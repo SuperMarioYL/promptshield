@@ -1,0 +1,44 @@
+name: PromptShield
+
+# Gate every PR: scan the code your coding agent will read for hidden
+# prompt-injection instructions. A HIGH finding fails the check (exit 1).
+#
+# Drop this file into any repo's .github/workflows/ to wire it up.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: prompt-injection scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need history so --diff against the base ref works on PRs.
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PromptShield
+        run: pip install -e .
+
+      # On a pull request, scan only the changed surfaces against the base ref.
+      - name: Scan PR diff
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          promptshield scan --diff "origin/${{ github.base_ref }}"
+
+      # On push to main, scan the whole tree.
+      - name: Scan repository
+        if: github.event_name != 'pull_request'
+        run: promptshield scan .
