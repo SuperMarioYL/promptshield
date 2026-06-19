@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 360" width="880" height="360"
+     font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif"
+     role="img" aria-label="PromptShield architecture: a repo, a git diff, or a PR JSON is decomposed by collectors into code-as-prompt surfaces, the YAML rule engine maps each surface to findings across five injection categories, a baseline suppresses accepted findings, and the report prints a table with a CI exit code">
+  <defs>
+    <marker id="ah-d" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#5A5A66"/></marker>
+  </defs>
+  <rect x="0" y="0" width="880" height="360" fill="#1D1D1F"/>
+
+  <!-- gate frame: the CI gate before the agent reads -->
+  <rect x="24" y="28" width="832" height="308" rx="18" fill="none" stroke="#F87171" stroke-opacity="0.45" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <text x="44" y="50" font-size="13" font-weight="600" fill="#FCA5A5">CI gate — scanned before the coding agent ever reads it</text>
+
+  <!-- connectors -->
+  <g stroke="#3A3A44" stroke-width="1.6" fill="none">
+    <line x1="212" y1="200" x2="268" y2="200" marker-end="url(#ah-d)"/>
+    <line x1="456" y1="200" x2="512" y2="200" marker-end="url(#ah-d)"/>
+    <line x1="700" y1="200" x2="756" y2="200" marker-end="url(#ah-d)"/>
+  </g>
+
+  <!-- Sources -->
+  <g>
+    <rect x="44" y="92" width="168" height="216" rx="15" fill="#94A3B8" fill-opacity="0.10" stroke="#94A3B8" stroke-width="1.5"/>
+    <text x="128" y="118" text-anchor="middle" font-size="15" font-weight="600" fill="#CBD5E1">Sources</text>
+    <g font-size="12" fill="#CBD5E1">
+      <rect x="60" y="134" width="136" height="40" rx="9" fill="#94A3B8" fill-opacity="0.12" stroke="#94A3B8" stroke-width="1.1"/>
+      <text x="128" y="158" text-anchor="middle" font-weight="600" fill="#CBD5E1">repo / path</text>
+      <rect x="60" y="182" width="136" height="40" rx="9" fill="#94A3B8" fill-opacity="0.12" stroke="#94A3B8" stroke-width="1.1"/>
+      <text x="128" y="206" text-anchor="middle" font-weight="600" fill="#CBD5E1">git diff REF</text>
+      <rect x="60" y="230" width="136" height="40" rx="9" fill="#94A3B8" fill-opacity="0.12" stroke="#94A3B8" stroke-width="1.1"/>
+      <text x="128" y="254" text-anchor="middle" font-weight="600" fill="#CBD5E1">PR-files JSON</text>
+    </g>
+    <text x="128" y="292" text-anchor="middle" font-size="10.5" fill="#A1A1A8">offline · no API key</text>
+  </g>
+
+  <!-- Collectors -> Surfaces -->
+  <g>
+    <rect x="268" y="92" width="188" height="216" rx="15" fill="#4DA3FF" fill-opacity="0.14" stroke="#4DA3FF" stroke-width="1.5"/>
+    <text x="362" y="118" text-anchor="middle" font-size="15" font-weight="600" fill="#9CCBFF">Collectors</text>
+    <text x="362" y="136" text-anchor="middle" font-size="10.5" fill="#A1A1A8">code-as-prompt surfaces</text>
+    <g font-size="11" fill="#9CCBFF">
+      <rect x="284" y="150" width="156" height="26" rx="8" fill="#4DA3FF" fill-opacity="0.14" stroke="#4DA3FF" stroke-width="1"/>
+      <text x="362" y="167" text-anchor="middle">comment · docstring</text>
+      <rect x="284" y="184" width="156" height="26" rx="8" fill="#4DA3FF" fill-opacity="0.14" stroke="#4DA3FF" stroke-width="1"/>
+      <text x="362" y="201" text-anchor="middle">commit message</text>
+      <rect x="284" y="218" width="156" height="26" rx="8" fill="#4DA3FF" fill-opacity="0.14" stroke="#4DA3FF" stroke-width="1"/>
+      <text x="362" y="235" text-anchor="middle">markdown · config</text>
+      <rect x="284" y="252" width="156" height="26" rx="8" fill="#4DA3FF" fill-opacity="0.14" stroke="#4DA3FF" stroke-width="1"/>
+      <text x="362" y="269" text-anchor="middle">string literal</text>
+    </g>
+  </g>
+
+  <!-- Rule Engine + Baseline -->
+  <g>
+    <rect x="512" y="92" width="188" height="216" rx="15" fill="#F87171" fill-opacity="0.14" stroke="#F87171" stroke-width="1.6"/>
+    <text x="606" y="118" text-anchor="middle" font-size="15" font-weight="700" fill="#FCA5A5">Rule Engine</text>
+    <text x="606" y="136" text-anchor="middle" font-size="10.5" fill="#A1A1A8">YAML rules · requires gate</text>
+    <g font-size="10.5" fill="#FCA5A5">
+      <rect x="528" y="148" width="156" height="22" rx="7" fill="#F87171" fill-opacity="0.14" stroke="#F87171" stroke-width="1"/>
+      <text x="606" y="163" text-anchor="middle">instruction_override</text>
+      <rect x="528" y="174" width="156" height="22" rx="7" fill="#F87171" fill-opacity="0.14" stroke="#F87171" stroke-width="1"/>
+      <text x="606" y="189" text-anchor="middle">data_destructive</text>
+      <rect x="528" y="200" width="156" height="22" rx="7" fill="#F87171" fill-opacity="0.14" stroke="#F87171" stroke-width="1"/>
+      <text x="606" y="215" text-anchor="middle">exfiltration</text>
+      <rect x="528" y="226" width="156" height="22" rx="7" fill="#F87171" fill-opacity="0.14" stroke="#F87171" stroke-width="1"/>
+      <text x="606" y="241" text-anchor="middle">tool_abuse · obfuscation</text>
+    </g>
+    <g>
+      <rect x="528" y="256" width="156" height="34" rx="9" fill="#FBBF24" fill-opacity="0.18" stroke="#FBBF24" stroke-width="1.2"/>
+      <text x="606" y="277" text-anchor="middle" font-size="11" font-weight="600" fill="#FCD34D">baseline suppression</text>
+    </g>
+  </g>
+
+  <!-- Report -->
+  <g>
+    <rect x="756" y="92" width="100" height="216" rx="15" fill="#2DC79A" fill-opacity="0.10" stroke="#2DC79A" stroke-width="1.5"/>
+    <text x="806" y="118" text-anchor="middle" font-size="15" font-weight="600" fill="#5BE0BC">Report</text>
+    <g font-size="11" fill="#5BE0BC">
+      <rect x="770" y="138" width="72" height="40" rx="9" fill="#2DC79A" fill-opacity="0.15" stroke="#2DC79A" stroke-width="1.1"/>
+      <text x="806" y="155" text-anchor="middle" font-weight="600">findings</text>
+      <text x="806" y="170" text-anchor="middle" font-size="10">table / JSON</text>
+      <rect x="770" y="186" width="72" height="34" rx="9" fill="#2DC79A" fill-opacity="0.12" stroke="#2DC79A" stroke-width="1.1"/>
+      <text x="806" y="203" text-anchor="middle" font-weight="600">severity</text>
+      <text x="806" y="216" text-anchor="middle" font-size="10">H/M/L</text>
+    </g>
+    <rect x="770" y="234" width="72" height="56" rx="10" fill="#F87171" fill-opacity="0.18" stroke="#F87171" stroke-width="1.4"/>
+    <text x="806" y="256" text-anchor="middle" font-size="11.5" font-weight="700" fill="#FCA5A5">exit 1</text>
+    <text x="806" y="274" text-anchor="middle" font-size="9.5" fill="#FCA5A5">on any HIGH</text>
+  </g>
+</svg>

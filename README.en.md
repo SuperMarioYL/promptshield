@@ -50,6 +50,20 @@ The new primitive is the **Finding over a code-as-prompt surface**: treating sou
 
 ---
 
+## <img src="https://api.iconify.design/tabler:topology-star-3.svg?color=%23b91c1c&width=24" height="22" align="absmiddle" alt="" /> Architecture
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="./assets/atlas-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="./assets/atlas-light.svg">
+    <img src="./assets/atlas-light.svg" width="880" alt="Architecture: a repo, a git diff, or a PR JSON is decomposed by Collectors into code-as-prompt Surfaces; the YAML Rule Engine maps each Surface to Findings across five injection categories; a baseline suppresses accepted findings; the Report prints a table with a CI exit code">
+  </picture>
+</p>
+
+A single scan takes one of three **Sources** — a whole repo, a `git diff`, or a `gh api` PR-files JSON — and **Collectors** decompose it into the **Surfaces** the agent actually *reads* (comments, docstrings, commit messages, markdown, config, string literals). The **Rule Engine** maps each Surface to **Findings** across five injection categories with a YAML ruleset, using a `requires` second-gate clause on noisy rules to keep false positives low; a **baseline** then suppresses already-accepted findings. The **Report** prints the findings table (or JSON) and exits `1` on any HIGH — the whole path is offline, no API key, and sits behind a CI gate before the agent ever reads the code.
+
+---
+
 ## Quickstart
 
 ```bash
@@ -85,15 +99,13 @@ Every HIGH carries a `why` line explaining why it is an injection — precision 
 
 ---
 
-## Demo
+## <img src="https://api.iconify.design/tabler:photo.svg?color=%23b91c1c&width=24" height="22" align="absmiddle" alt="" /> Demo
 
 Script: scan `malicious_pr` → findings table → `--pr` exits 1 (CI goes red) → the real Reddit data-nuking injection flagged on camera.
 
-[![asciicast](https://asciinema.org/a/PLACEHOLDER.svg)](https://asciinema.org/a/PLACEHOLDER)
+![demo](./assets/demo.gif)
 
-> 📼 Placeholder above. The recording script is [`assets/demo.tape`](./assets/demo.tape); a static preview is [`assets/demo.svg`](./assets/demo.svg). To produce the real asciicast that the README embeds, run `asciinema rec` under the same commands as `assets/demo.tape`.
-
-![demo](./assets/demo.svg)
+> 📼 The recording script is [`docs/demo.tape`](./docs/demo.tape); [`.github/workflows/demo.yml`](./.github/workflows/demo.yml) renders it with [vhs](https://github.com/charmbracelet/vhs) on every tag and commits `assets/demo.gif`. Render locally with `vhs docs/demo.tape` (needs `promptshield` on PATH).
 
 ---
 
