@@ -13,6 +13,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Managed attack-signature / rule feed (PromptShield Cloud).
 - GitHub Marketplace listing.
 
+## [0.2.0] - 2026-07-02
+
+The release that lands PromptShield findings inside GitHub itself: SARIF
+output uploads to the repo's Security → Code scanning tab, rule packs stack so
+teams can layer their own policy on top of the seed ruleset, and an
+obfuscation decode pass catches injections hidden behind a layer of encoding.
+
+### Added
+
+#### m4 — SARIF output
+
+- `promptshield scan --format sarif` emits a SARIF 2.1.0 log consumable by
+  GitHub code scanning.
+- The bundled GitHub Action uploads the SARIF via
+  `github/codeql-action/upload-sarif@v3`, so findings appear in the repo's
+  Security → Code scanning tab — not just a red check. The upload runs even
+  when a HIGH finding makes the scan exit 1.
+
+#### m5 — stackable rule packs
+
+- `--rules` is repeatable and accepts a directory of `rules.yaml` files; packs
+  stack on top of the built-in seed ruleset in load order, last-wins by rule
+  id, so a pack can narrow, broaden, or outright disable a built-in.
+- Rules carry an `enabled` flag — a pack can set `enabled: false` to turn a
+  built-in rule off (a disable entry only needs an `id`).
+- `promptshield rules list` prints the active merged ruleset (one row per
+  rule, including its `enabled` state).
+
+#### m6 — obfuscation decode pass
+
+- base64 / hex / zero-width-stripped / homoglyph-normalized variants of every
+  surface are re-scanned, so an injection hidden behind one encoding layer is
+  still caught.
+- `--no-decode` opts out of the decode pass for repos that want byte-exact
+  scanning.
+
+### Fixed
+
+#### m7 — comment-marker leak in `_strip_line_comment`
+
+- `_strip_line_comment` no longer leaks the real comment marker (e.g. `//`)
+  into extracted text when a statement terminator precedes the comment; `;`
+  was dropped from the default line-comment markers. Previously this
+  corrupted excerpts and baseline fingerprints.
+
 ## [0.1.0] - 2026-06-06
 
 First public release. Scans the source text a coding agent reads — comments,
@@ -53,5 +98,6 @@ prompt-injection attack surface, before the agent ingests it.
 - asciinema demo assets (`assets/demo.tape`, `assets/demo.svg`).
 - Bilingual README (Chinese primary `README.md`, English `README.en.md`).
 
-[Unreleased]: https://github.com/SuperMarioYL/promptshield/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/SuperMarioYL/promptshield/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/SuperMarioYL/promptshield/releases/tag/v0.2.0
 [0.1.0]: https://github.com/SuperMarioYL/promptshield/releases/tag/v0.1.0

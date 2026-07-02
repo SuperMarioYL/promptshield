@@ -12,6 +12,8 @@ on:
 
 permissions:
   contents: read
+  # Required to upload SARIF findings to the repo's Security → Code scanning tab.
+  security-events: write
 
 jobs:
   scan:
@@ -42,3 +44,25 @@ jobs:
       - name: Scan repository
         if: github.event_name != 'pull_request'
         run: promptshield scan .
+
+      # --- Code-scanning upload (additive) -------------------------------------
+      # Emit a SARIF 2.1.0 log and upload it so findings land in the repo's
+      # Security → Code scanning tab. The SARIF scan is allowed to fail (a HIGH
+      # makes the scan exit 1, suppressed with `|| true`) and the upload runs
+      # unconditionally, so findings are reported even when the gating step
+      # above turns the check red. This does NOT replace the exit-1 gate.
+      - name: Scan PR diff (SARIF)
+        if: always() && github.event_name == 'pull_request'
+        run: |
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          promptshield scan --diff "origin/${{ github.base_ref }}" --format sarif > promptshield.sarif || true
+
+      - name: Scan repository (SARIF)
+        if: always() && github.event_name != 'pull_request'
+        run: promptshield scan . --format sarif > promptshield.sarif || true
+
+      - name: Upload SARIF to code-scanning
+        if: always() && hashFiles('promptshield.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: promptshield.sarif

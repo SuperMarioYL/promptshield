@@ -11,7 +11,7 @@
 <p align="center">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
   <img src="https://img.shields.io/badge/python-3.12%2B-blue.svg" alt="Python 3.12+" />
-  <img src="https://img.shields.io/badge/release-v0.1.0-f59e0b.svg" alt="Release v0.1.0" />
+  <img src="https://img.shields.io/badge/release-v0.2.0-f59e0b.svg" alt="Release v0.2.0" />
   <a href="./.github/workflows/ci.yml"><img src="https://img.shields.io/badge/CI-ruff%20%2B%20pytest-success.svg" alt="CI" /></a>
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs welcome" />
   <br/>
@@ -70,6 +70,8 @@ A single scan takes one of three **Sources** — a whole repo, a `git diff`, or 
 pip install promptshield           # or: uvx promptshield
 promptshield scan .                # scan the current repo, print a findings table
 echo "exit code: $?"               # 1 if any HIGH finding — drops straight into CI
+promptshield scan . --format sarif # emit SARIF 2.1.0 for the GitHub Security tab
+promptshield rules list            # inspect the active merged ruleset
 ```
 
 <details>
@@ -127,6 +129,8 @@ PromptShield decomposes a repo or diff into **Surface** records (every span of t
 
 Three severities: **HIGH** (fails CI) · **MED** · **LOW**. To cut false positives, noisy-verb rules are gated behind a `requires` clause — they fire only when paired with agent-steering or all-encompassing wording ("all / recursively / production database"), so a plain "delete the temp cache" comment won't trip them.
 
+**Obfuscation decode pass (v0.2):** every Surface is also re-scanned through a decode pass — base64 / hex / zero-width-stripped / homoglyph-normalized variants are all scanned, so an injection hidden behind one encoding layer is still caught; `--no-decode` opts out. Results can be emitted as **SARIF 2.1.0** (`--format sarif`) for GitHub code-scanning ingestion, and the ruleset is extensible via **stackable rule packs** (`--rules`, see [Configuration](#configuration)).
+
 ---
 
 ## Use it in CI
@@ -136,6 +140,7 @@ Copy the bundled [`.github/workflows/promptshield.yml`](./.github/workflows/prom
 - **On a PR:** `promptshield scan --diff origin/<base>` scans only the changed Surfaces (added lines + new commit messages).
 - **On push to main:** `promptshield scan .` scans the whole tree.
 - Any **HIGH** finding exits 1 and turns the check red.
+- **SARIF upload:** the Action also runs a `--format sarif` pass and uploads the result to the repo's Security → Code scanning tab — even when a HIGH makes the scan exit 1, the SARIF is still uploaded, so findings land in the Security panel rather than just a red check.
 
 You can also wire it in by hand:
 
@@ -193,12 +198,36 @@ Main options of the `scan` command:
 | `--pr FILE.json` | path | none | Scan a `gh api .../files` PR-files JSON document |
 | `--baseline FILE` | path | `.promptshield-baseline.yaml` | Baseline of accepted Findings to suppress |
 | `--update-baseline` | flag | `false` | Write all current Findings to the baseline and exit 0 |
-| `--rules FILE` | path | bundled ruleset | Use a custom `rules.yaml` |
-| `--json` | flag | `false` | Emit machine-readable JSON instead of the Rich table |
+| `--rules FILE / DIR` | path (repeatable) | bundled ruleset | Custom `rules.yaml` or a directory; repeatable, packs stack in load order (last-wins by id) |
+| `--format FORMAT` | enum | `table` | Output format: `table` / `json` / `sarif` (SARIF 2.1.0) |
+| `--no-decode` | flag | `false` | Disable the obfuscation decode pass (base64 / hex / zero-width / homoglyph) |
+| `--json` | flag | `false` | Emit machine-readable JSON instead of the Rich table (alias for `--format json`) |
 | `--no-color` | flag | `false` | Disable colored output |
 | `--repo DIR` | path | `.` | Repository directory for `--diff` |
 
 > `--diff` and `--pr` are mutually exclusive.
+
+### Rule packs
+
+`--rules` is repeatable and accepts a directory — the built-in seed ruleset loads first, and each custom pack stacks on top in load order, with **later packs overriding earlier rules of the same id** (last-wins). So a team can layer its own policy, narrow a rule, or turn one off entirely without forking the built-in set:
+
+```yaml
+# my-team-rules.yaml — stacks on top of the built-in ruleset
+rules:
+  - id: PS050-custom-exfil          # a new team-private rule
+    severity: HIGH
+    category: exfiltration
+    why: Internal secret-exfil phrasing the built-in set doesn't cover.
+    patterns:
+      - "dump (env|secrets|\\.env) to .* curl"
+  - id: PS012-credential-deletion   # turn a built-in rule off
+    enabled: false
+```
+
+```bash
+promptshield scan . --rules my-team-rules.yaml --rules policies/   # stack packs
+promptshield rules list --rules my-team-rules.yaml                 # inspect the merged active ruleset
+```
 
 ---
 
@@ -230,11 +259,14 @@ Main options of the `scan` command:
 - [x] **m1 — `scan <path>`**: walk a repo, extract comments / docstrings / markdown / string literals into Surfaces, run the YAML rule engine, print a Rich findings table + severity counts.
 - [x] **m2 — diff & CI**: `scan --diff <ref>` (git diff added lines) + `scan --pr <file.json>` (gh PR-files JSON), HIGH → exit 1, plus the `promptshield.yml` Action.
 - [x] **m3 — baseline & demo**: `.promptshield-baseline.yaml` suppression; `tests/fixtures/malicious_pr/` reproducing the real Reddit data-nuking injection; asciinema demo; bilingual README.
+- [x] **m4 — SARIF output**: `scan --format sarif` emits SARIF 2.1.0; the GitHub Action uploads findings to Security → Code scanning via `upload-sarif`.
+- [x] **m5 — stackable rule packs**: `--rules` is repeatable and accepts a directory; packs stack in load order (last-wins); rules carry an `enabled` flag; `rules list` prints the merged ruleset.
+- [x] **m6 — obfuscation decode pass**: base64 / hex / zero-width / homoglyph variants re-scanned; `--no-decode` opts out.
 - [ ] Semantic detection (opt-in) — layered on top of regex / heuristics to raise recall against evasion.
 - [ ] Managed attack-signature / rule feed (PromptShield Cloud).
 - [ ] GitHub Marketplace listing + placement in awesome-claude-code / awesome-ai-coding lists.
 
-> Explicitly out of scope for v0.1: Web UI / dashboard, LLM semantic detection, per-language AST parsing, auto-remediation, IDE / editor plugins, SARIF / SBOM output, custom-trained classifier.
+> Explicitly out of scope for v0.2: Web UI / dashboard, LLM semantic detection, per-language AST parsing, auto-remediation, IDE / editor plugins, SBOM / provenance output, custom-trained classifier.
 
 ---
 
