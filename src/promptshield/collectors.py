@@ -43,12 +43,20 @@ class SurfaceKind(StrEnum):
 
 @dataclass(frozen=True)
 class Surface:
-    """One readable chunk of source text plus where it came from."""
+    """One readable chunk of source text plus where it came from.
+
+    ``decoded_from`` is set only on surfaces produced by the decode pass
+    (``decode.py``); it records the encoding layer the text was recovered from
+    so downstream reporting can attribute a finding to, e.g., a base64 blob
+    rather than the visible text. It defaults to ``None`` so every existing
+    ``Surface(...)`` construction stays valid.
+    """
 
     text: str
     file: str
     line: int
     kind: SurfaceKind
+    decoded_from: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -85,8 +93,10 @@ MAX_FILE_BYTES = 1_000_000  # skip files larger than ~1 MB
 
 # Single-line comment markers by "family". We keep this deliberately broad and
 # language-agnostic — the plan is explicit: line + comment-block scanning, no
-# per-language AST.
-_LINE_COMMENT_MARKERS = ("#", "//", "--", ";")
+# per-language AST. The semicolon is intentionally NOT here: it ends statements
+# in C-family languages but is rarely a genuine line-comment starter, and
+# treating it as one leaked the real `//` marker into extracted excerpts (m7).
+_LINE_COMMENT_MARKERS = ("#", "//", "--")
 
 # Inline block-comment delimiters (start, end) handled on a per-line basis.
 _BLOCK_COMMENT_PAIRS = (
@@ -102,8 +112,16 @@ _STRING_LITERAL_RE = re.compile(r"""(['"])((?:\\.|(?!\1).)*)\1""")
 
 
 def _strip_line_comment(line: str) -> str | None:
-    """Return the comment text of ``line`` if it contains a line comment."""
+    """Return the comment text of ``line`` if it contains a line comment.
+
+    Picks the earliest marker position, but remembers *which* marker matched at
+    that position so slicing uses the correct marker length even when markers
+    overlap (m7: previously the marker was re-derived by scanning the marker
+    list in order, which could pick the wrong length and leak the real marker
+    into the excerpt).
+    """
     best: int | None = None
+    best_marker: str | None = None
     for marker in _LINE_COMMENT_MARKERS:
         idx = line.find(marker)
         if idx == -1:
@@ -116,12 +134,10 @@ def _strip_line_comment(line: str) -> str | None:
             continue
         if best is None or idx < best:
             best = idx
-    if best is None:
+            best_marker = marker
+    if best is None or best_marker is None:
         return None
-    marker_len = next(
-        len(m) for m in _LINE_COMMENT_MARKERS if line.startswith(m, best)
-    )
-    return line[best + marker_len :].strip()
+    return line[best + len(best_marker) :].strip()
 
 
 def _extract_string_literals(line: str) -> list[str]:

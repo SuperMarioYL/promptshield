@@ -14,6 +14,7 @@ from pathlib import Path
 from promptshield import collectors
 from promptshield.baseline import Baseline
 from promptshield.collectors import Surface
+from promptshield.decode import decoded_surfaces
 from promptshield.rules import Finding, Rule, Severity, load_rules, run_rules
 
 
@@ -46,14 +47,41 @@ class ScanResult:
         return 1 if self.has_high else 0
 
 
+def _dedupe_findings(findings: list[Finding]) -> list[Finding]:
+    """Drop identical findings (a decoded variant can re-hit the same rule/span).
+
+    Finding is a frozen, hashable dataclass, so whole-object set membership is
+    exact — two findings survive only if they differ in at least one field.
+    """
+    seen: set[Finding] = set()
+    out: list[Finding] = []
+    for f in findings:
+        if f not in seen:
+            seen.add(f)
+            out.append(f)
+    return out
+
+
 def _scan_surfaces(
     surfaces: list[Surface],
     *,
     rules: list[Rule] | None,
     baseline: Baseline | None,
+    decode: bool = True,
 ) -> ScanResult:
     rules = rules if rules is not None else load_rules()
-    findings = run_rules(surfaces, rules)
+    # The decode pass adds de-obfuscated variants of each surface so an
+    # injection hidden behind one encoding layer is still matched. Decoded
+    # variants reuse the original file/line/kind (plus a decoded_from tag) so a
+    # finding still points at the real span. surface_count stays the count of
+    # *real* surfaces — decoded variants are auxiliary, not user-facing.
+    scan_surfaces = list(surfaces)
+    if decode:
+        scan_surfaces.extend(decoded_surfaces(surfaces))
+    findings = _dedupe_findings(run_rules(scan_surfaces, rules))
+    findings.sort(
+        key=lambda f: (-f.severity.rank, f.file, f.line, f.rule_id)
+    )
     suppressed = 0
     if baseline is not None:
         before = len(findings)
@@ -83,6 +111,7 @@ def scan_path(
     rules: list[Rule] | None = None,
     baseline: Baseline | None = None,
     baseline_path: str | Path | None = None,
+    decode: bool = True,
 ) -> ScanResult:
     """Walk ``path`` (file or dir), extract surfaces, and scan them."""
     surfaces = collectors.collect_path(path)
@@ -90,6 +119,7 @@ def scan_path(
         surfaces,
         rules=rules,
         baseline=_resolve_baseline(baseline, baseline_path),
+        decode=decode,
     )
 
 
@@ -100,6 +130,7 @@ def scan_diff(
     rules: list[Rule] | None = None,
     baseline: Baseline | None = None,
     baseline_path: str | Path | None = None,
+    decode: bool = True,
 ) -> ScanResult:
     """Scan added lines + new commit messages of ``git diff <ref>``."""
     surfaces = collectors.collect_diff(ref, repo=repo)
@@ -107,6 +138,7 @@ def scan_diff(
         surfaces,
         rules=rules,
         baseline=_resolve_baseline(baseline, baseline_path),
+        decode=decode,
     )
 
 
@@ -116,6 +148,7 @@ def scan_pr_json(
     rules: list[Rule] | None = None,
     baseline: Baseline | None = None,
     baseline_path: str | Path | None = None,
+    decode: bool = True,
 ) -> ScanResult:
     """Scan a ``gh api`` PR-files JSON document."""
     surfaces = collectors.collect_pr_json(pr_json)
@@ -123,4 +156,5 @@ def scan_pr_json(
         surfaces,
         rules=rules,
         baseline=_resolve_baseline(baseline, baseline_path),
+        decode=decode,
     )
