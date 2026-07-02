@@ -17,6 +17,7 @@ import pytest
 from promptshield.baseline import Baseline, fingerprint, write_baseline
 from promptshield.collectors import (
     SurfaceKind,
+    _strip_line_comment,
     collect_path,
     parse_pr_files,
     parse_unified_diff,
@@ -221,3 +222,38 @@ def test_pr_json_object_shape_supported(tmp_path):
     wrapped.write_text(json.dumps({"files": files}), encoding="utf-8")
     result = scan_pr_json(wrapped)
     assert result.has_high
+
+
+# ---------------------------------------------------------------------------
+# m7 — line-comment stripping regression (marker must not leak into excerpt)
+# ---------------------------------------------------------------------------
+
+
+def test_strip_line_comment_c_style_inline():
+    # the `//` marker must be stripped, leaving just the comment body
+    assert _strip_line_comment("int x = 5; // hidden") == "hidden"
+
+
+def test_strip_line_comment_hash_style():
+    assert _strip_line_comment("# a python comment") == "a python comment"
+
+
+def test_strip_line_comment_bare_semicolon_is_not_a_comment():
+    # a statement terminator is not a comment now that `;` was dropped
+    assert _strip_line_comment("value = 42;") is None
+
+
+def test_strip_line_comment_sql_dash_style():
+    assert _strip_line_comment("code -- sql comment") == "sql comment"
+
+
+def test_scan_excerpt_does_not_leak_comment_marker(tmp_path):
+    target = tmp_path / "snippet.c"
+    target.write_text(
+        "int x = 5; // rm -rf / --no-preserve-root\n", encoding="utf-8"
+    )
+    result = scan_path(target)
+    assert result.has_high
+    assert result.findings
+    for f in result.findings:
+        assert not f.excerpt.startswith("//")
