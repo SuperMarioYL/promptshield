@@ -66,3 +66,63 @@ def test_scanner_decode_false_finds_nothing(tmp_path):
     result = scan_path(target, decode=False)
     assert result.findings == []
     assert not result.has_high
+
+
+def test_decoded_finding_carries_decoded_from_provenance(tmp_path):
+    """m12 — a finding on a base64 variant reports its encoding layer.
+
+    The m6 spec promises decoded-variant findings carry ``decoded_from``
+    provenance; before m12 the ``Finding`` dropped it at the ``Rule.match`` seam,
+    so a base64-blob hit showed the decoded excerpt against a line whose visible
+    text is the opaque blob — reading as a false positive.
+    """
+    blob = base64.b64encode(_PAYLOAD.encode()).decode()
+    target = tmp_path / "evil3.py"
+    target.write_text(f"# {blob}\n", encoding="utf-8")
+    result = scan_path(target, decode=True)
+    assert result.has_high
+    decoded = [f for f in result.findings if f.decoded_from is not None]
+    assert decoded, "expected at least one finding with decoded_from set"
+    assert any(f.decoded_from == "base64" for f in decoded), (
+        "a base64-recovered finding must report decoded_from == 'base64' (m12)"
+    )
+
+
+def test_plain_finding_has_no_decoded_from(tmp_path):
+    # A finding on visible (non-decoded) text must leave decoded_from as None.
+    target = tmp_path / "plain.py"
+    target.write_text(f"# {_PAYLOAD}\n", encoding="utf-8")
+    result = scan_path(target, decode=True)
+    assert result.has_high
+    plain = [f for f in result.findings if f.decoded_from is None]
+    assert plain, "the visible-text finding must have decoded_from=None"
+
+
+def test_decoded_from_appears_in_json_and_sarif(tmp_path):
+    # The provenance must reach both machine outputs.
+    import json as _json
+
+    from promptshield.sarif import to_sarif
+
+    blob = base64.b64encode(_PAYLOAD.encode()).decode()
+    target = tmp_path / "evil4.py"
+    target.write_text(f"# {blob}\n", encoding="utf-8")
+    result = scan_path(target, decode=True)
+
+    # JSON: dataclasses.asdict carries the field.
+    doc = {
+        "findings": [
+            {"decoded_from": f.decoded_from, "rule_id": f.rule_id}
+            for f in result.findings
+        ]
+    }
+    assert any(
+        f["decoded_from"] == "base64" for f in doc["findings"]
+    ), "JSON output must carry decoded_from"
+
+    # SARIF: the message names the layer.
+    sar = to_sarif(result, tool_version="0.3.0")
+    msgs = [r["message"]["text"] for r in sar["runs"][0]["results"]]
+    assert any("[base64]" in m for m in msgs), "SARIF message must name the layer"
+    # Sanity: still a well-formed SARIF 2.1.0 log.
+    _json.dumps(sar)
