@@ -60,13 +60,17 @@ def render_table(result: ScanResult, *, no_color: bool = False) -> None:
 
     for f in result.findings:
         sev = Text(f.severity.value, style=_SEVERITY_STYLE[f.severity])
+        # Prefix a decoded-variant finding's excerpt with its encoding layer
+        # (m12) so a base64/hex hit is not mistaken for a false positive on the
+        # opaque blob visible in the file.
+        excerpt = f"[{f.decoded_from}] {f.excerpt}" if f.decoded_from else f.excerpt
         table.add_row(
             sev,
             f.rule_id,
             f.category,
             f"{f.file}:{f.line}",
             f.surface.value,
-            f.excerpt,
+            excerpt,
         )
 
     console.print(table)

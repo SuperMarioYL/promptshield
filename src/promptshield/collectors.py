@@ -85,6 +85,18 @@ SKIP_DIRS = {
     "dist", "build", ".tox", ".idea", ".vscode",
 }
 
+# Files never worth scanning by basename. The baseline file stores each accepted
+# finding's excerpt verbatim; scanning it re-flags those excerpts on the baseline
+# file itself, and because the finding's ``file`` is now the baseline path (not
+# the original) the fingerprint differs and baseline suppression never fires — so
+# the very next scan after ``--update-baseline`` is noisy (m9). We hardcode the
+# basename here rather than importing ``DEFAULT_BASELINE_NAME`` from
+# ``promptshield.baseline`` to avoid a collectors↔baseline import cycle
+# (baseline → rules → collectors).
+SKIP_FILES = {
+    ".promptshield-baseline.yaml",
+}
+
 MAX_FILE_BYTES = 1_000_000  # skip files larger than ~1 MB
 
 # ---------------------------------------------------------------------------
@@ -111,6 +123,38 @@ _TRIPLE_QUOTES = ('"""', "'''")
 _STRING_LITERAL_RE = re.compile(r"""(['"])((?:\\.|(?!\1).)*)\1""")
 
 
+def _in_open_string(prefix: str) -> bool:
+    """True if ``prefix`` ends inside an unclosed single/double-quoted string.
+
+    Walks the prefix tracking quote state so a comment marker is only skipped
+    when it genuinely sits inside an open string. The old implementation used a
+    crude per-quote parity count (``prefix.count("'") % 2``), which counted
+    apostrophes *inside* a double-quoted string — so ``msg = "don't"  # …`` was
+    misread as having an open ``'`` string and the ``#`` comment was dropped
+    entirely, silently un-scanning the injection (m8). This walk respects the
+    active delimiter and backslash escapes; it is not an AST, so it stays within
+    the v0.1 "no per-language parser" scope.
+    """
+    quote: str | None = None
+    escaped = False
+    for ch in prefix:
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\":
+            # A backslash escapes the next char only while inside a string.
+            if quote is not None:
+                escaped = True
+            continue
+        if quote is None:
+            if ch == '"' or ch == "'":
+                quote = ch
+        else:
+            if ch == quote:
+                quote = None
+    return quote is not None
+
+
 def _strip_line_comment(line: str) -> str | None:
     """Return the comment text of ``line`` if it contains a line comment.
 
@@ -126,11 +170,12 @@ def _strip_line_comment(line: str) -> str | None:
         idx = line.find(marker)
         if idx == -1:
             continue
-        # Avoid flagging the marker when it's clearly inside a quoted string by
-        # requiring no unmatched quote before it. Cheap heuristic, good enough
-        # for v0.1 (no AST).
-        prefix = line[:idx]
-        if prefix.count('"') % 2 == 1 or prefix.count("'") % 2 == 1:
+        # Avoid flagging the marker when it's genuinely inside a quoted string.
+        # A quote-state walk over the prefix (m8) — NOT a per-quote parity count,
+        # which mis-classified apostrophes inside double-quoted strings and
+        # dropped legitimate comments (and let an attacker hide an injection by
+        # prefixing the comment with any apostrophe-bearing string literal).
+        if _in_open_string(line[:idx]):
             continue
         if best is None or idx < best:
             best = idx
@@ -350,6 +395,8 @@ def collect_path(root: str | Path) -> list[Surface]:
             continue
         if any(part in SKIP_DIRS for part in path.parts):
             continue
+        if path.name in SKIP_FILES:  # m9 — never re-scan our own baseline file
+            continue
         if path.suffix.lower() not in TEXT_EXTENSIONS:
             continue
         try:
@@ -379,6 +426,14 @@ def parse_unified_diff(diff_text: str) -> list[Surface]:
     current_file: str | None = None
     added: list[tuple[int, str]] = []
     new_lineno = 0
+    # Track whether we're inside a hunk body so a ``+++ `` file-header check
+    # can't fire on an ADDED line whose content merely begins with ``++`` (m10):
+    # git emits such a line as ``+++ some heading`` (the leading ``+`` of the
+    # added line plus the ``++`` of its content), which is indistinguishable from
+    # a real ``+++ b/file`` header without hunk state. Real file headers only
+    # appear OUTSIDE a hunk (before the first ``@@``); inside a hunk every
+    # ``+``-prefixed line is an added line.
+    in_hunk = False
 
     def flush() -> None:
         nonlocal added, current_file
@@ -420,29 +475,39 @@ def parse_unified_diff(diff_text: str) -> list[Surface]:
         added = []
 
     for line in diff_text.splitlines():
-        if line.startswith("+++ "):
+        # A "\ No newline at end of file" marker is diff METADATA, not a file
+        # line — it must never advance the new-file counter (m11). Handle it
+        # first so it can't fall through to the context-line branch, which would
+        # drift every subsequent added line's reported number by +1.
+        if line.startswith("\\ "):
+            continue
+        # File headers only outside a hunk (m10) — inside a hunk a ``+++ …`` line
+        # is an added line whose content starts with ``++``, not a new-file header.
+        if not in_hunk and line.startswith("+++ "):
             flush()
             path = line[4:].strip()
             if path.startswith("b/"):
                 path = path[2:]
             current_file = None if path == "/dev/null" else path
             continue
-        if line.startswith("--- "):
+        if not in_hunk and line.startswith("--- "):
             continue
         if line.startswith("diff "):
             flush()
             current_file = None
+            in_hunk = False
             continue
         m = _HUNK_RE.match(line)
         if m:
             new_lineno = int(m.group(1))
+            in_hunk = True
             continue
-        if line.startswith("+") and not line.startswith("+++"):
+        if in_hunk and line.startswith("+"):
             added.append((new_lineno, line[1:]))
             new_lineno += 1
-        elif line.startswith("-"):
+        elif in_hunk and line.startswith("-"):
             continue
-        else:
+        elif in_hunk:
             # context line advances the new-file counter
             new_lineno += 1
     flush()

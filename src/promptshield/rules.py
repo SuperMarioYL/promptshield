@@ -49,7 +49,18 @@ _EXCERPT_MAX = 160
 
 @dataclass(frozen=True)
 class Finding:
-    """A single rule hit on a Surface."""
+    """A single rule hit on a Surface.
+
+    ``decoded_from`` carries the encoding layer the matched text was recovered
+    from (``base64`` / ``hex`` / ``zero-width-strip`` / ``homoglyph``) when the
+    finding was raised on a decoded-variant surface, else ``None``. The m6 decode
+    pass already tags each decoded ``Surface`` with this provenance; propagating
+    it onto the Finding (m12) means a base64-blob hit reports "recovered from a
+    base64 layer" instead of showing the decoded excerpt against a line whose
+    visible text is the opaque blob — which otherwise reads as a false positive.
+    It defaults to ``None`` so every existing ``Finding(...)`` construction and
+    fingerprint stays valid.
+    """
 
     rule_id: str
     severity: Severity
@@ -59,6 +70,7 @@ class Finding:
     line: int
     excerpt: str
     why: str
+    decoded_from: str | None = None
 
     def fingerprint_excerpt(self) -> str:
         """Normalized excerpt used for baseline fingerprinting."""
@@ -105,6 +117,7 @@ class Rule:
             line=surface.line,
             excerpt=_make_excerpt(surface.text, hit),
             why=self.why,
+            decoded_from=surface.decoded_from,  # m12 — carry the encoding layer
         )
 
 

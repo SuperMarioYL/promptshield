@@ -55,10 +55,13 @@ def _rule_entries(findings: list[Finding]) -> list[dict]:
 
 
 def _result_entry(f: Finding) -> dict:
+    # For a decoded-variant finding, name the encoding layer in the message (m12)
+    # so a code-scanning alert on a base64 blob explains where the text came from.
+    excerpt = f"[{f.decoded_from}] {f.excerpt}" if f.decoded_from else f.excerpt
     return {
         "ruleId": f.rule_id,
         "level": _LEVEL_FOR_SEVERITY[f.severity],
-        "message": {"text": f"{f.why}: {f.excerpt}"},
+        "message": {"text": f"{f.why}: {excerpt}"},
         "locations": [
             {
                 "physicalLocation": {
