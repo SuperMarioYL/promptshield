@@ -9,7 +9,7 @@ to zero-or-more ``Finding`` records via a YAML rule engine.
 from promptshield.collectors import Surface, SurfaceKind
 from promptshield.rules import Finding, Rule, Severity
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "__version__",

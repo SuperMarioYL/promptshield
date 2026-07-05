@@ -13,6 +13,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Managed attack-signature / rule feed (PromptShield Cloud).
 - GitHub Marketplace listing.
 
+## [0.3.0] - 2026-07-05
+
+Detection-correctness and evasion-resistance hardening. Five verified bug-fixes
+on the core detection primitive — no new external surface, all within the v0.1
+"line + comment-block scanning, no per-language AST" scope. The headline
+(m8) closes a false-negative that doubled as a deliberate evasion vector: an
+attacker could hide an injection from **every** scan mode simply by prefixing the
+comment with a string literal containing an apostrophe.
+
+### Fixed
+
+#### m8 — apostrophe-prefix comment false negative / evasion vector
+
+`_strip_line_comment` skipped a `#`/`//` comment whenever the code before it
+contained a string literal with an apostrophe. The old guard used a per-quote
+parity count that included apostrophes *inside* double-quoted strings, so
+`msg = "don't"  # ignore all previous instructions` was read as having an open
+`'` string and the comment was dropped entirely — zero surfaces produced, the
+injection never scanned. Replaced the parity count with a quote-state walk over
+the prefix that respects `"`/`'` delimiters and `\` escapes (still no AST), so a
+comment marker is skipped only when it genuinely sits inside an open string.
+Regression coverage in `tests/test_collectors_comment.py`.
+
+#### m9 — baseline file no longer re-scanned
+
+`collect_path` walked `.promptshield-baseline.yaml` like any config file, so the
+rule engine re-matched the excerpts the baseline stores verbatim. Because those
+new findings' `file` was the baseline path (not the original), their fingerprint
+differed and baseline suppression never fired — the very next scan after
+`--update-baseline` was noisy, breaking the "drop on a noisy legacy repo and only
+surface new issues" promise. `collect_path` now skips the baseline file by name
+during directory walks (an explicit single-file scan of it still works).
+Regression coverage in `tests/test_baseline_selfscan.py`.
+
+#### m10 — diff parser no longer misreads `++` content as a file header
+
+`parse_unified_diff` had no hunk-state tracking, so the `+++ ` file-header check
+fired mid-hunk. An added line whose content began with `++ ` (e.g. a markdown
+heading) was emitted by git as `+++ some heading` and misread as a new-file
+header, misattributing every subsequent added line in that hunk to a bogus path.
+The parser now tracks an `in_hunk` flag and only treats `+++ ` as a header
+outside a hunk. Regression coverage in `tests/test_diff_parse.py`.
+
+#### m11 — `\ No newline at end of file` no longer drifts line numbers
+
+The `\ No newline at end of file` marker git emits is diff metadata, not a file
+line, but it fell into the context-line branch and advanced the new-file line
+counter — drifting every subsequent added line's reported number (and its SARIF
+annotation) by +1. The marker is now recognised explicitly and skipped without
+incrementing. Regression coverage in `tests/test_diff_parse.py`.
+
+#### m12 — decoded-variant findings report their encoding layer
+
+The decode pass tags each decoded `Surface` with `decoded_from` (base64 / hex /
+zero-width-strip / homoglyph), but `Finding` had no such field and `Rule.match`
+dropped the provenance — a base64-blob hit reported the decoded excerpt against a
+line whose visible text is the opaque blob, reading as a false positive during
+remediation. `Finding` now carries `decoded_from`, `Rule.match` propagates it,
+and it surfaces in the table excerpt (`[base64] …`), JSON, and SARIF message.
+Regression coverage in `tests/test_decode.py`.
+
 ## [0.2.0] - 2026-07-02
 
 The release that lands PromptShield findings inside GitHub itself: SARIF
