@@ -1,0 +1,63 @@
+{
+  "schema": 1,
+  "name": "promptshield",
+  "github": "https://github.com/SuperMarioYL/promptshield",
+  "host": "promptshield.lei6393.com",
+  "lang": { "primary": "zh", "toggle": true },
+  "accent": ["#d6503f", "#b91c1c", "#e0913a"],
+  "hero": {
+    "eyebrow": { "zh": "离线 · 零 API key · 秒级", "en": "Offline · No API key · Seconds" },
+    "headline": { "zh": "在 agent 读代码前\n拦住藏起来的注入", "en": "Catch hidden injection\nbefore your agent reads" },
+    "sub": {
+      "zh": "PromptShield 在 Claude Code / Cursor 读取仓库、diff 或 PR 之前，把代码里当作提示词的注释、docstring、commit message 扫一遍，命中任何 HIGH 就让 CI 变红。",
+      "en": "Before Claude Code or Cursor reads a repo, diff or PR, PromptShield scans the comments, docstrings and commit messages your agent will treat as prompts — any HIGH turns CI red."
+    },
+    "command": "pip install promptshield",
+    "ctaGithub": { "zh": "在 GitHub 查看", "en": "View on GitHub" },
+    "scroll": { "zh": "向下滚动", "en": "Scroll" }
+  },
+  "advantages": [
+    {
+      "title": { "zh": "代码即提示词的面", "en": "The code-as-prompt surface" },
+      "body": {
+        "zh": "Collectors 把仓库 / git diff / PR JSON 拆成 agent 真正会读到的 Surface —— 注释、docstring、commit message、markdown、配置、字符串字面量 —— 再逐段扫描。",
+        "en": "Collectors split a repo, git diff or PR JSON into the surfaces an agent actually reads — comments, docstrings, commit messages, markdown, config, string literals — then scans each one."
+      },
+      "chips": ["› comments · docstrings", "› commit · markdown · config"]
+    },
+    {
+      "title": { "zh": "五类注入 + requires 门控", "en": "Five threat classes, gated" },
+      "body": {
+        "zh": "YAML 规则引擎把每段 Surface 映射成 instruction_override / data_destructive / exfiltration / tool_abuse / obfuscation 五类 Finding；高噪声规则用 requires 二次门控压误报，精度优先于召回。",
+        "en": "A YAML rule engine maps each surface into five classes — instruction override, data destructive, exfiltration, tool abuse, obfuscation — with a requires second gate on noisy rules to keep precision over recall."
+      },
+      "chips": ["› 5 categories", "› requires gating"]
+    },
+    {
+      "title": { "zh": "混淆解码 pass", "en": "Obfuscation decode pass" },
+      "body": {
+        "zh": "每段 Surface 还会过一遍解码 —— base64 / hex / 零宽字符剥离 / 同形字归一化后的变体重新扫描，藏在编码层背后的注入照样命中；--no-decode 可关。",
+        "en": "Every surface also runs through a decode pass — base64, hex, zero-width stripping and homoglyph normalization are rescanned, so an injection hidden behind an encoding layer is still caught; --no-decode turns it off."
+      },
+      "chips": ["› base64 / hex", "› zero-width · homoglyph"]
+    },
+    {
+      "title": { "zh": "CI 门 · 离线 · SARIF", "en": "CI gate, offline, SARIF" },
+      "body": {
+        "zh": "任何 HIGH 即 exit 1 让 CI 失败；--format sarif 输出 SARIF 2.1.0 上传到 GitHub Security；scan 不需要 git 或 gh，也不发网络请求。",
+        "en": "Any HIGH exits 1 to fail CI; --format sarif emits SARIF 2.1.0 for the GitHub Security tab; scan needs no git or gh and makes no network calls."
+      },
+      "chips": ["› exit 1 on HIGH", "› SARIF 2.1.0"]
+    }
+  ],
+  "scene": { "kind": "hub-nodes", "nodes": ["instruction_override", "data_destructive", "exfiltration", "tool_abuse", "obfuscation"] },
+  "cta": {
+    "headline": { "zh": "在 CI 里卡住注入面", "en": "Gate the injection surface in CI" },
+    "sub": {
+      "zh": "MIT 许可，pip install promptshield 即用；把仓库自带的 workflow 复制进去，每个 PR 自动门控。",
+      "en": "MIT-licensed, pip install promptshield; copy the bundled workflow in and every PR is gated."
+    },
+    "button": { "zh": "在 GitHub 查看", "en": "View on GitHub" }
+  },
+  "footer": { "tag": { "zh": "开源 · MIT", "en": "Open source · MIT" } }
+}
