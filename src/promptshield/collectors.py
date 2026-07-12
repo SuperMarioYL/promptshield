@@ -155,8 +155,13 @@ def _in_open_string(prefix: str) -> bool:
     return quote is not None
 
 
-def _strip_line_comment(line: str) -> str | None:
-    """Return the comment text of ``line`` if it contains a line comment.
+def _find_line_comment(line: str) -> tuple[int, str] | None:
+    """Return ``(marker_index, comment_text)`` for ``line``'s earliest comment.
+
+    ``marker_index`` is where the winning marker starts in ``line`` so callers
+    can still scan the *code before it* — a trailing comment must never shadow a
+    prose string literal sitting in the preceding code (m13). Returns ``None``
+    when no marker sits outside an open string.
 
     Picks the earliest marker position, but remembers *which* marker matched at
     that position so slicing uses the correct marker length even when markers
@@ -182,7 +187,17 @@ def _strip_line_comment(line: str) -> str | None:
             best_marker = marker
     if best is None or best_marker is None:
         return None
-    return line[best + len(best_marker) :].strip()
+    return best, line[best + len(best_marker) :].strip()
+
+
+def _strip_line_comment(line: str) -> str | None:
+    """Return the comment text of ``line`` if it contains a line comment.
+
+    Thin wrapper over :func:`_find_line_comment` for callers that only need the
+    comment body.
+    """
+    found = _find_line_comment(line)
+    return found[1] if found is not None else None
 
 
 def _extract_string_literals(line: str) -> list[str]:
@@ -279,6 +294,12 @@ def extract_surfaces_from_text(
             idx = raw.find(q)
             if idx == -1:
                 continue
+            # Code before the opening triple-quote can still carry a prose string
+            # literal with an injection; scan it before the rest is consumed (m13).
+            for lit in _extract_string_literals(raw[:idx]):
+                surfaces.append(
+                    Surface(lit, file, lineno, SurfaceKind.STRING_LITERAL)
+                )
             rest = raw[idx + len(q) :]
             close = rest.find(q)
             if close != -1:
@@ -303,6 +324,12 @@ def extract_surfaces_from_text(
             idx = raw.find(opener)
             if idx == -1:
                 continue
+            # Code before an inline block comment must still be scanned for a
+            # prose string literal before that prefix is dropped (m13).
+            for lit in _extract_string_literals(raw[:idx]):
+                surfaces.append(
+                    Surface(lit, file, lineno, SurfaceKind.STRING_LITERAL)
+                )
             rest = raw[idx + len(opener) :]
             close = rest.find(closer)
             if close != -1:
@@ -325,9 +352,23 @@ def extract_surfaces_from_text(
             continue
 
         # --- line comment? ---
-        comment = _strip_line_comment(raw)
-        if comment:
-            surfaces.append(Surface(comment, file, lineno, SurfaceKind.COMMENT))
+        found_comment = _find_line_comment(raw)
+        if found_comment is not None:
+            marker_idx, comment = found_comment
+            # A trailing comment must not shadow a prose string literal sitting in
+            # the code *before* it (m13): previously reaching a line comment
+            # `continue`d straight past string-literal extraction, so
+            # `BANNER = "ignore all previous instructions"  # label` yielded only
+            # the (benign) comment surface and the injection in the literal was
+            # never scanned — a one-character evasion (append any comment).
+            for lit in _extract_string_literals(raw[:marker_idx]):
+                surfaces.append(
+                    Surface(lit, file, lineno, SurfaceKind.STRING_LITERAL)
+                )
+            if comment:
+                surfaces.append(
+                    Surface(comment, file, lineno, SurfaceKind.COMMENT)
+                )
             continue
 
         # --- prose-like string literals ---
