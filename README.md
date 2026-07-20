@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT" /></a>
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache-2.0" /></a>
   <img src="https://img.shields.io/badge/python-3.12%2B-blue.svg" alt="Python 3.12+" />
   <img src="https://img.shields.io/badge/release-v0.4.0-f59e0b.svg" alt="Release v0.4.0" />
   <a href="./.github/workflows/ci.yml"><img src="https://img.shields.io/badge/CI-ruff%20%2B%20pytest-success.svg" alt="CI" /></a>
