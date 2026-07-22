@@ -126,7 +126,20 @@ def _make_excerpt(text: str, match: re.Match) -> str:
     text = " ".join(text.split())
     if len(text) <= _EXCERPT_MAX:
         return text
-    start = max(0, match.start() - _EXCERPT_MAX // 2)
+    # ``match.start()`` is an index into the ORIGINAL pre-collapse text, but we
+    # just collapsed internal whitespace, so that span is stale. For surfaces
+    # with significant internal whitespace (heavily-indented docstrings / block
+    # comments — common in real code) the collapsed position drifts far from
+    # ``match.start()``; once drift exceeds ``_EXCERPT_MAX // 2`` the window
+    # misses the matched span entirely and the excerpt collapses to a bare
+    # ``…`` with the injection phrase absent. Because
+    # ``Finding.fingerprint_excerpt()`` hashes this (possibly empty) excerpt,
+    # distinct findings on the same rule+file can collide to one fingerprint
+    # and be falsely suppressed by the baseline. Re-locate the match in the
+    # COLLAPSED text and center the window there (fix-excerpt-index-mismatch).
+    relocated = match.re.search(text)
+    center = relocated.start() if relocated is not None else len(text) // 2
+    start = max(0, center - _EXCERPT_MAX // 2)
     end = min(len(text), start + _EXCERPT_MAX)
     snippet = text[start:end]
     if start > 0:

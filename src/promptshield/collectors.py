@@ -434,7 +434,22 @@ def collect_path(root: str | Path) -> list[Surface]:
     for path in sorted(root.rglob("*")):
         if not path.is_file():
             continue
-        if any(part in SKIP_DIRS for part in path.parts):
+        # Skip only genuine SKIP_DIRS *subdirectories*. ``path.parts`` includes
+        # the scan root and every ancestor directory, so a scan root (or any
+        # parent dir) literally named ``build`` / ``venv`` / ``dist`` / etc.
+        # would skip EVERY file — a silent full false-negative on the primary
+        # ``scan <dir>`` use case, triggered by nothing more than a common
+        # directory name (fix-skipdirs-ignores-scan-root). Test the directory
+        # components RELATIVE to the scan root (which exclude the root and its
+        # ancestors); ``[:-1]`` drops the file's own name so only real
+        # subdirectory components can trigger a skip, while a scan root or an
+        # ancestor named ``build`` cannot — genuine ``build``/``node_modules``
+        # subdirectories still are.
+        try:
+            rel_parts = path.relative_to(root).parts
+        except ValueError:
+            rel_parts = path.parts
+        if any(part in SKIP_DIRS for part in rel_parts[:-1]):
             continue
         if path.name in SKIP_FILES:  # m9 — never re-scan our own baseline file
             continue
@@ -564,8 +579,15 @@ def collect_diff(ref: str, *, repo: str | Path = ".") -> list[Surface]:
     """
     repo = str(repo)
     try:
+        # ``--no-color`` defeats a repo/user git config that sets
+        # ``color.diff = always`` / ``color.ui = always``: without it git emits
+        # ANSI escape codes even into the captured pipe, so every diff/header
+        # line is prefixed with ``\x1b[...]`` and ``parse_unified_diff``'s
+        # ``startswith("+++ ")`` / ``@@`` regex / ``startswith("+")`` checks
+        # all fail — ``scan_diff`` silently returns zero findings
+        # (fix-diff-color-config-breaks-scan).
         diff = subprocess.run(
-            ["git", "-C", repo, "diff", "--unified=3", ref],
+            ["git", "-C", repo, "diff", "--unified=3", "--no-color", ref],
             capture_output=True,
             text=True,
             check=True,
@@ -586,7 +608,8 @@ def _collect_commit_messages(ref: str, repo: str) -> list[Surface]:
     """Collect commit messages on ``ref..HEAD`` as COMMIT_MSG surfaces."""
     try:
         out = subprocess.run(
-            ["git", "-C", repo, "log", "--format=%H%x00%B%x00", f"{ref}..HEAD"],
+            ["git", "-C", repo, "log", "--no-color",
+             "--format=%H%x00%B%x00", f"{ref}..HEAD"],
             capture_output=True,
             text=True,
             check=True,
