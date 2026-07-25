@@ -303,16 +303,32 @@ def extract_surfaces_from_text(
             rest = raw[idx + len(q) :]
             close = rest.find(q)
             if close != -1:
-                # single-line triple-quoted string
+                # single-line triple-quoted string. Scan the docstring, then fall
+                # through to scan the post-close REMAINDER — a trailing comment
+                # / string literal / implicit-concat triple sitting after the
+                # closing triple must not be silently dropped
+                # (fix-triple-single-line-close-drops-trailing-content). The
+                # previous code set opened_triple and `continue`d straight to
+                # the next physical line, so `BANNER = """x"""  # <injection>`
+                # scanned only the docstring and the trailing comment was never
+                # read. Mirroring the inline block-comment close path below
+                # (:341) we reassign raw to the remainder and let the block-
+                # comment / line-comment / string-literal extraction run on it.
                 doc = rest[:close].strip()
                 if doc:
                     surfaces.append(
                         Surface(doc, file, lineno, SurfaceKind.DOCSTRING)
                     )
-            else:
-                in_triple = q
-                triple_start_line = lineno
-                triple_buf = [rest]
+                raw = rest[close + len(q) :]
+                # break the DELIMITER loop only — do NOT open a multi-line
+                # triple, so `if opened_triple: continue` below is skipped and
+                # the remainder is scanned instead of `continue`-d past.
+                break
+            # multi-line triple opens here: consume the line, wait for the
+            # closer on a subsequent line.
+            in_triple = q
+            triple_start_line = lineno
+            triple_buf = [rest]
             opened_triple = True
             break
         if opened_triple:
@@ -423,8 +439,25 @@ def collect_file(path: Path, *, display: str | None = None) -> list[Surface]:
     )
 
 
-def collect_path(root: str | Path) -> list[Surface]:
-    """Walk ``root`` (file or directory) and collect Surfaces from text files."""
+def collect_path(
+    root: str | Path,
+    *,
+    skip_files: set[str] | None = None,
+) -> list[Surface]:
+    """Walk ``root`` (file or directory) and collect Surfaces from text files.
+
+    ``skip_files`` extends the module-level :data:`SKIP_FILES` set with extra
+    basenames to skip. It is used to skip a *custom* ``--baseline`` filename:
+    the m9 self-scan defect (the baseline file's own stored excerpts get
+    re-flagged because the finding's ``file`` differs from the original so the
+    fingerprint never matches) recurs for ANY non-default baseline name kept
+    inside the scanned tree — the hardcoded ``SKIP_FILES`` only covers
+    ``.promptshield-baseline.yaml`` (fix-custom-baseline-name-self-scan).
+    ``scan_path`` threads ``{Path(baseline_path).name}`` here. ``None`` (the
+    default) means the module-level :data:`SKIP_FILES` only, preserving the
+    default-name path and ``test_baseline_selfscan``.
+    """
+    skip = SKIP_FILES if skip_files is None else (SKIP_FILES | set(skip_files))
     root = Path(root)
     if root.is_file():
         rel = root.name
@@ -451,7 +484,7 @@ def collect_path(root: str | Path) -> list[Surface]:
             rel_parts = path.parts
         if any(part in SKIP_DIRS for part in rel_parts[:-1]):
             continue
-        if path.name in SKIP_FILES:  # m9 — never re-scan our own baseline file
+        if path.name in skip:  # m9 — never re-scan our own baseline file
             continue
         if path.suffix.lower() not in TEXT_EXTENSIONS:
             continue

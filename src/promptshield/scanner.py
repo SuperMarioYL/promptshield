@@ -113,8 +113,18 @@ def scan_path(
     baseline_path: str | Path | None = None,
     decode: bool = True,
 ) -> ScanResult:
-    """Walk ``path`` (file or dir), extract surfaces, and scan them."""
-    surfaces = collectors.collect_path(path)
+    """Walk ``path`` (file or directory), extract surfaces, and scan them."""
+    # Thread a custom ``--baseline`` filename into collect_path so it is skipped
+    # by name — the m9 self-scan defect recurs for ANY non-default baseline
+    # name kept inside the scanned tree (collect_path's hardcoded SKIP_FILES
+    # only covers ``.promptshield-baseline.yaml``), so without this a custom
+    # ``--baseline mybase.yaml`` re-flags the baseline file's own stored
+    # excerpts and Baseline.filter can't suppress them (the file differs from
+    # the original → fingerprint mismatch). fix-custom-baseline-name-self-scan.
+    skip_files = (
+        {Path(baseline_path).name} if baseline_path is not None else None
+    )
+    surfaces = collectors.collect_path(path, skip_files=skip_files)
     return _scan_surfaces(
         surfaces,
         rules=rules,
