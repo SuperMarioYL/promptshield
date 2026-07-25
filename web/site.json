@@ -1,5 +1,6 @@
 {
   "schema": 1,
+  "content_version": "v0.6.0",
   "name": "promptshield",
   "github": "https://github.com/SuperMarioYL/promptshield",
   "host": "promptshield.lei6393.com",
@@ -20,10 +21,10 @@
     {
       "title": { "zh": "扫的是 agent 真会照做的那段文本", "en": "Scans the text your agent will actually follow" },
       "body": {
-        "zh": "注释、docstring、commit message、markdown、配置、字符串字面量——这些 agent 会读进上下文并照做的文本，逐段扫一遍；不是把代码当依赖包查 CVE。",
-        "en": "Comments, docstrings, commit messages, markdown, config, string literals — the text an agent reads into context and acts on, scanned segment by segment. Not code-as-a-dependency CVE check."
+        "zh": "注释、docstring、commit message、markdown、配置、字符串字面量——这些 agent 会读进上下文并照做的文本，逐段扫一遍。同一行里一段字符串收尾后紧跟的注释、或紧挨着的第二段字符串也不漏扫——不再因收尾就静默跳过，藏在后面的注入照样命中。",
+        "en": "Comments, docstrings, commit messages, markdown, config, string literals — the text an agent reads into context and acts on, scanned segment by segment. A comment or a second string tucked right after a same-line string's close is scanned too — no longer silently skipped past the close, so an injection hiding behind it is still caught."
       },
-      "chips": ["› 注释 · docstring", "› commit · markdown · 配置"]
+      "chips": ["› 注释 · docstring", "› commit · markdown · 配置", "› 收尾后照样扫"]
     },
     {
       "title": { "zh": "五类藏起来的注入，都认得", "en": "Five hidden-injection flavors, all recognized" },
@@ -42,22 +43,22 @@
       "chips": ["› base64 · hex", "› 零宽 · 同形字"]
     },
     {
-      "title": { "zh": "CI 一变红，Security 面板留底", "en": "CI goes red, Security tab keeps the record" },
+      "title": { "zh": "告警信得过，不是自己吓自己", "en": "Findings you can trust — not noise from your own files" },
       "body": {
-        "zh": "出现任何 HIGH 就退出 1 让 check 变红；同时输出 SARIF 上传到 GitHub Security 标签页——即便 check 红了，发现项照样留底。扫描不发网络请求，不需要 git 或 gh。",
-        "en": "Any HIGH exits 1 to turn the check red; SARIF is uploaded to the GitHub Security tab — even when the check fails, the findings stay on record. The scan makes no network calls and needs no git or gh."
+        "zh": "留在仓库里的自定义基线文件不会再把自己扫成误报 HIGH——基线只压该压的，每一个告警都是真的。出现任何 HIGH 就退出 1 让 check 变红，同时输出 SARIF 上传到 GitHub Security 标签页留底。扫描不发网络请求，不需要 git 或 gh。",
+        "en": "A custom baseline file you keep in the repo no longer scans itself into false HIGH alarms — the baseline only suppresses what it should, so every alert is real. Any HIGH exits 1 to turn the check red, and SARIF is uploaded to the GitHub Security tab for the record. The scan makes no network calls and needs no git or gh."
       },
-      "chips": ["› HIGH 即退出 1", "› SARIF 上报"]
+      "chips": ["› 基线不自扫", "› HIGH 即退出 1", "› SARIF 上报"]
     }
   ],
   "scene": { "kind": "hub-nodes", "nodes": ["覆盖指令", "删库销数据", "偷密钥外发", "滥用工具", "混淆载荷"] },
   "cta": {
     "headline": { "zh": "在每个 PR 上拦住藏起来的注入", "en": "Block hidden injections on every PR" },
     "sub": {
-      "zh": "MIT 许可，pip install promptshield 即用；把仓库自带的 workflow 复制进 .github/workflows/，每个 PR 自动拦住高风险注入。",
-      "en": "MIT-licensed, pip install promptshield; copy the bundled workflow into .github/workflows/ and every PR auto-blocks HIGH injections."
+      "zh": "Apache-2.0 许可，pip install promptshield 即用；把仓库自带的 workflow 复制进 .github/workflows/，每个 PR 自动拦住高风险注入。",
+      "en": "Apache-2.0-licensed, pip install promptshield; copy the bundled workflow into .github/workflows/ and every PR auto-blocks HIGH injections."
     },
     "button": { "zh": "在 GitHub 查看", "en": "View on GitHub" }
   },
-  "footer": { "tag": { "zh": "开源 · MIT", "en": "Open source · MIT" } }
+  "footer": { "tag": { "zh": "开源 · Apache-2.0", "en": "Open source · Apache-2.0" } }
 }
