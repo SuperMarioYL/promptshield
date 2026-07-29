@@ -168,19 +168,30 @@ def _find_line_comment(line: str) -> tuple[int, str] | None:
     overlap (m7: previously the marker was re-derived by scanning the marker
     list in order, which could pick the wrong length and leak the real marker
     into the excerpt).
+
+    A marker char (``#`` / ``//`` / ``--``) can legitimately appear INSIDE a
+    quoted string literal before its closing quote, with a real trailing
+    comment later on the same line. The first ``line.find(marker)`` hit then
+    sits inside an open string; the loop below advances past every in-string
+    occurrence until it reaches one outside any string (or exhausts the line),
+    so a string literal containing the marker char can no longer hide a
+    trailing comment (fix-string-literal-marker-hides-trailing-comment).
     """
     best: int | None = None
     best_marker: str | None = None
     for marker in _LINE_COMMENT_MARKERS:
         idx = line.find(marker)
+        # Advance past any occurrence that sits inside an open quoted string
+        # (fix-string-literal-marker-hides-trailing-comment). The previous
+        # first-occurrence-only `line.find(marker)` plus a single
+        # `_in_open_string` check `continue`d the WHOLE marker when its first
+        # hit was in-string — so a string literal containing the marker char
+        # before its closing quote hid ANY trailing comment later on the same
+        # line, silently un-scanning its injection. Walk forward until we reach
+        # an occurrence outside any string (or exhaust the line).
+        while idx != -1 and _in_open_string(line[:idx]):
+            idx = line.find(marker, idx + len(marker))
         if idx == -1:
-            continue
-        # Avoid flagging the marker when it's genuinely inside a quoted string.
-        # A quote-state walk over the prefix (m8) — NOT a per-quote parity count,
-        # which mis-classified apostrophes inside double-quoted strings and
-        # dropped legitimate comments (and let an attacker hide an injection by
-        # prefixing the comment with any apostrophe-bearing string literal).
-        if _in_open_string(line[:idx]):
             continue
         if best is None or idx < best:
             best = idx

@@ -127,13 +127,26 @@ def scan(
 
     rules = load_rule_packs(list(rules_paths)) if rules_paths else None
     # When updating the baseline we capture *all* findings, so don't pre-filter.
-    active_baseline = None if update_baseline else Baseline.load(baseline_path)
+    # Use an EMPTY baseline (not None) so that forwarding ``baseline_path`` to
+    # the scan seam below can't trigger delegated baseline loading/filtering
+    # inside ``_resolve_baseline`` (which treats ``baseline=None`` as "load
+    # from baseline_path") — that would drop already-accepted findings on a
+    # re-baseline and shrink the written baseline. An empty baseline filters
+    # nothing, preserving the capture-all promise (fix-cli-custom-baseline-name-
+    # self-scan).
+    active_baseline = (
+        Baseline.empty() if update_baseline else Baseline.load(baseline_path)
+    )
     decode = not no_decode
 
     try:
         if pr_json:
             result = scan_pr_json(
-                pr_json, rules=rules, baseline=active_baseline, decode=decode
+                pr_json,
+                rules=rules,
+                baseline=active_baseline,
+                baseline_path=baseline_path,
+                decode=decode,
             )
         elif diff_ref:
             result = scan_diff(
@@ -141,11 +154,16 @@ def scan(
                 repo=repo,
                 rules=rules,
                 baseline=active_baseline,
+                baseline_path=baseline_path,
                 decode=decode,
             )
         else:
             result = scan_path(
-                path, rules=rules, baseline=active_baseline, decode=decode
+                path,
+                rules=rules,
+                baseline=active_baseline,
+                baseline_path=baseline_path,
+                decode=decode,
             )
     except (RuntimeError, ValueError, OSError) as exc:
         raise click.ClickException(str(exc)) from exc
