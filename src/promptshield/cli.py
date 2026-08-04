@@ -12,6 +12,7 @@ from __future__ import annotations
 import sys
 
 import click
+import yaml
 from rich.console import Console
 from rich.table import Table
 
@@ -125,7 +126,22 @@ def scan(
     if as_json:
         fmt = "json"
 
-    rules = load_rule_packs(list(rules_paths)) if rules_paths else None
+    # ``load_rule_packs`` parses user-supplied ``--rules`` YAML outside the scan
+    # try/except below; a hand-edited or malformed pack would crash the CLI with
+    # a raw ``yaml.YAMLError`` traceback instead of a clean error. Catch it here
+    # and surface a clear, path-aware message (fix-malformed-baseline-rules-yaml-
+    # crash). ``click.Path(exists=True)`` already covers FileNotFoundError for
+    # ``--rules``, so only the YAML-syntax failure needs guarding.
+    if rules_paths:
+        try:
+            rules = load_rule_packs(list(rules_paths))
+        except yaml.YAMLError as exc:
+            raise click.ClickException(
+                f"rules file is malformed ({', '.join(rules_paths)}): "
+                f"{exc}; fix the YAML and re-run"
+            ) from exc
+    else:
+        rules = None
     # When updating the baseline we capture *all* findings, so don't pre-filter.
     # Use an EMPTY baseline (not None) so that forwarding ``baseline_path`` to
     # the scan seam below can't trigger delegated baseline loading/filtering
@@ -134,9 +150,24 @@ def scan(
     # re-baseline and shrink the written baseline. An empty baseline filters
     # nothing, preserving the capture-all promise (fix-cli-custom-baseline-name-
     # self-scan).
-    active_baseline = (
-        Baseline.empty() if update_baseline else Baseline.load(baseline_path)
-    )
+    #
+    # ``Baseline.load`` parses the (often hand-edited ``--update-baseline``
+    # artifact) baseline YAML outside the scan try/except; a syntax error
+    # introduced while reviewing/trimming accepted findings would crash the CLI
+    # with a raw ``yaml.YAMLError`` traceback. Catch it here and surface a
+    # clear, path-aware message. A MISSING baseline file is intentionally NOT
+    # an error (``Baseline.load`` returns empty so the default
+    # ``.promptshield-baseline.yaml`` is silent on a fresh repo) — only the
+    # YAML-syntax failure is guarded (fix-malformed-baseline-rules-yaml-crash).
+    try:
+        active_baseline = (
+            Baseline.empty() if update_baseline else Baseline.load(baseline_path)
+        )
+    except yaml.YAMLError as exc:
+        raise click.ClickException(
+            f"baseline file {baseline_path} is malformed: {exc}; "
+            f"fix the YAML and re-run"
+        ) from exc
     decode = not no_decode
 
     try:
