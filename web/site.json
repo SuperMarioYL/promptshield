@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "content_version": "v0.8.0",
+  "content_version": "v0.9.0",
   "name": "promptshield",
   "github": "https://github.com/SuperMarioYL/promptshield",
   "host": "promptshield.lei6393.com",
@@ -45,10 +45,10 @@
     {
       "title": { "zh": "基线和规则文件，怎么改都不会咬你", "en": "Your baseline and rules files won't bite you — however you edit them" },
       "body": {
-        "zh": "留在仓库里的基线文件不会再把自己扫成误报 HIGH——它只压该压的，每一个告警都是真的。你整理已接受告警、或写自己的规则包时手误写错，也不会甩出一长串看不懂的报错让 CI 莫名变红——只告诉你哪个文件坏了，改完一行就能继续。出现任何 HIGH 就退出 1 把 check 变红，告警也留在 GitHub 的 Security 标签页备查。扫描不发网络请求，不需要 git 或 gh。",
-        "en": "A baseline file you keep in the repo no longer scans itself into false HIGH alarms — it only suppresses what it should, so every alert is real. Typo the YAML while trimming accepted findings or writing your own rule pack, and instead of an unreadable crash dump that turns CI red for no clear reason, you get one line naming the broken file — fix it and move on. Any HIGH exits 1 to turn the check red, and findings also stay on GitHub's Security tab for the record. The scan makes no network calls and needs no git or gh."
+        "zh": "留在仓库里的基线文件不会再把自己扫成误报 HIGH——它只压该压的，每一个告警都是真的。你整理已接受告警、或写自己的规则包时手误写错、或文件存成了错的字符编码，也不会甩出一长串看不懂的报错让 CI 莫名变红——只告诉你哪个文件坏了，改完一行就能继续。出现任何 HIGH 就退出 1 把 check 变红，告警也留在 GitHub 的 Security 标签页备查。扫描不发网络请求，不需要 git 或 gh。",
+        "en": "A baseline file you keep in the repo no longer scans itself into false HIGH alarms — it only suppresses what it should, so every alert is real. Typo the YAML while trimming accepted findings or writing your own rule pack, or have a baseline/rules file saved in the wrong character encoding, and instead of an unreadable crash dump that turns CI red for no clear reason, you get one line naming the broken file — fix it and move on. Any HIGH exits 1 to turn the check red, and findings also stay on GitHub's Security tab for the record. The scan makes no network calls and needs no git or gh."
       },
-      "chips": ["› 基线不自扫", "› 写错只报错不崩", "› 留在 Security 标签页"]
+      "chips": ["› 基线不自扫", "› 写错 / 存错编码 · 只报错不崩", "› 留在 Security 标签页"]
     }
   ],
   "scene": { "kind": "hub-nodes", "nodes": ["覆盖指令", "删库销数据", "偷密钥外发", "滥用工具", "混淆载荷"] },
