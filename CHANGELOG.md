@@ -13,6 +13,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Managed attack-signature / rule feed (PromptShield Cloud).
 - GitHub Marketplace listing.
 
+## [0.9.0] - 2026-08-09
+
+CLI robustness hardening — one verified crash on the CLI error-handling surface,
+the encoding sibling of the v0.8.0 fix. No new external surface; the CLI, SARIF,
+and JSON wire formats are unchanged.
+
+### Fixed
+
+#### fix-baseline-rules-invalid-utf8-crash — invalid-UTF-8 baseline / rules crash
+
+The v0.8.0 `fix-malformed-baseline-rules-yaml-crash` milestone wrapped
+`Baseline.load` and `load_rule_packs` in `except yaml.YAMLError` so a malformed
+YAML-*syntax* baseline or `--rules` pack surfaced a clean `click.ClickException`
+instead of a raw `yaml.parser.ParserError` traceback. But `Baseline.load`
+(`baseline.py:49`) and `_load_pack_file` (`rules.py:251`) read the file with
+strict `read_text(encoding="utf-8")`, so a file containing invalid UTF-8 **bytes**
+(a stray `\xff`, or a file saved as Latin-1/CP1252) raised an uncaught
+`UnicodeDecodeError` — a `ValueError`, **not** a `yaml.YAMLError` — which the
+v0.8.0 guard let escape, crashing the CLI with a raw `UnicodeDecodeError`
+traceback and exiting 1. v0.8.0 caught the YAML *syntax* error but not the
+*encoding* error, the sibling defect it missed. Same defect site (the two load
+sites outside the scan try/except) and same user scenario (the hand-edited
+`--update-baseline` artifact / a user-supplied `--rules` pack).
+
+The guard now widens to `except (yaml.YAMLError, UnicodeDecodeError)` at both
+load sites, surfacing a clean path-aware `click.ClickException` ("baseline file
+\<path\> is malformed or not valid UTF-8: ...; fix the file and re-run").
+Regression coverage in `tests/test_invalid_utf8.py` (a baseline file, a `--rules`
+pack, and the default baseline name each carrying an invalid `\xff` byte raise a
+clean `ClickException`, not a `UnicodeDecodeError` traceback).
+
 ## [0.4.0] - 2026-07-13
 
 Detection-correctness hardening — one verified false-negative on the

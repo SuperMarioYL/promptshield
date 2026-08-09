@@ -132,13 +132,22 @@ def scan(
     # and surface a clear, path-aware message (fix-malformed-baseline-rules-yaml-
     # crash). ``click.Path(exists=True)`` already covers FileNotFoundError for
     # ``--rules``, so only the YAML-syntax failure needs guarding.
+    #
+    # v0.9.0 (fix-baseline-rules-invalid-utf8-crash): the v0.8.0 guard caught
+    # ``yaml.YAMLError`` (a YAML *syntax* error) but NOT ``UnicodeDecodeError`` —
+    # ``_load_pack_file`` reads with strict ``read_text(encoding="utf-8")``, so a
+    # ``--rules`` pack containing invalid UTF-8 BYTES (a stray ``\xff``, or a file
+    # saved as Latin-1/CP1252) raised an uncaught ``UnicodeDecodeError`` (a
+    # ``ValueError``, NOT a ``yaml.YAMLError``) and crashed the CLI with a raw
+    # traceback. Widen the except tuple to also catch ``UnicodeDecodeError`` so a
+    # bad-encoding pack surfaces the same clean, path-aware error.
     if rules_paths:
         try:
             rules = load_rule_packs(list(rules_paths))
-        except yaml.YAMLError as exc:
+        except (yaml.YAMLError, UnicodeDecodeError) as exc:
             raise click.ClickException(
-                f"rules file is malformed ({', '.join(rules_paths)}): "
-                f"{exc}; fix the YAML and re-run"
+                f"rules file is malformed or not valid UTF-8 "
+                f"({', '.join(rules_paths)}): {exc}; fix the file and re-run"
             ) from exc
     else:
         rules = None
@@ -159,14 +168,24 @@ def scan(
     # an error (``Baseline.load`` returns empty so the default
     # ``.promptshield-baseline.yaml`` is silent on a fresh repo) — only the
     # YAML-syntax failure is guarded (fix-malformed-baseline-rules-yaml-crash).
+    #
+    # v0.9.0 (fix-baseline-rules-invalid-utf8-crash): the v0.8.0 guard caught
+    # ``yaml.YAMLError`` (a YAML *syntax* error) but NOT ``UnicodeDecodeError`` —
+    # ``Baseline.load`` reads with strict ``read_text(encoding="utf-8")``, so a
+    # baseline file containing invalid UTF-8 BYTES (a stray ``\xff``, or a file
+    # saved as Latin-1/CP1252 during a hand-edit) raised an uncaught
+    # ``UnicodeDecodeError`` (a ``ValueError``, NOT a ``yaml.YAMLError``) and
+    # crashed the CLI with a raw traceback — the encoding sibling v0.8.0 missed.
+    # Widen the except tuple to also catch ``UnicodeDecodeError`` so a
+    # bad-encoding baseline surfaces the same clean, path-aware error.
     try:
         active_baseline = (
             Baseline.empty() if update_baseline else Baseline.load(baseline_path)
         )
-    except yaml.YAMLError as exc:
+    except (yaml.YAMLError, UnicodeDecodeError) as exc:
         raise click.ClickException(
-            f"baseline file {baseline_path} is malformed: {exc}; "
-            f"fix the YAML and re-run"
+            f"baseline file {baseline_path} is malformed or not valid UTF-8: "
+            f"{exc}; fix the file and re-run"
         ) from exc
     decode = not no_decode
 
