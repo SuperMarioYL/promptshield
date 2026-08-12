@@ -9,6 +9,7 @@ HIGH findings make the command exit with status 1 so it drops straight into CI.
 
 from __future__ import annotations
 
+import re
 import sys
 
 import click
@@ -26,6 +27,45 @@ from promptshield.report import render_json, render_table
 from promptshield.rules import Rule, load_rule_packs, load_rules
 from promptshield.sarif import sarif_json
 from promptshield.scanner import scan_diff, scan_path, scan_pr_json
+
+# ---------------------------------------------------------------------------
+# Shared guarded loader for user-supplied ``--rules`` packs (scan + rules list)
+# ---------------------------------------------------------------------------
+
+
+def _load_rule_packs_guarded(rules_paths: tuple[str, ...]) -> list[Rule]:
+    """Load stacked ``--rules`` packs, surfacing a malformed/invalid pack as a
+    clean ``click.ClickException`` instead of a raw traceback.
+
+    ``load_rule_packs`` (rules.py) parses and compiles user-supplied YAML, which
+    can fail at two levels:
+
+    * file-level — a YAML *syntax* error raises ``yaml.YAMLError`` (v0.8.0,
+      fix-malformed-baseline-rules-yaml-crash), and an invalid-UTF-8 byte
+      raises ``UnicodeDecodeError`` (v0.9.0, fix-baseline-rules-invalid-utf8-
+      crash);
+    * rule-semantic — a typo'd regex raises ``re.error`` during ``re.compile``
+      (NOT a subclass of YAMLError/UnicodeDecodeError/ValueError — verified
+      issubclass), and a typo'd severity / unknown category / missing key /
+      duplicate id raises ``ValueError`` (v0.10.0,
+      fix-scan-rules-semantic-error-crash).
+
+    The v0.8/v0.9 guard caught only the file-level pair; the rule-semantic
+    siblings crashed the CLI with a raw traceback on the identical
+    hand-edited-pack scenario. v0.10.0 widens the tuple to also catch
+    ``ValueError, re.error``. This helper is shared by both ``scan`` and
+    ``rules list`` so the two commands cannot diverge again
+    (fix-rules-list-unguarded-load — ``rules list`` previously had NO guard at
+    all). ``click.Path(exists=True)`` on the ``--rules`` option already covers
+    ``FileNotFoundError``; only the parse/compile failures need guarding here.
+    """
+    try:
+        return load_rule_packs(list(rules_paths))
+    except (yaml.YAMLError, UnicodeDecodeError, ValueError, re.error) as exc:
+        raise click.ClickException(
+            f"rules file is malformed or not valid UTF-8 "
+            f"({', '.join(rules_paths)}): {exc}; fix the file and re-run"
+        ) from exc
 
 
 @click.group()
@@ -126,31 +166,15 @@ def scan(
     if as_json:
         fmt = "json"
 
-    # ``load_rule_packs`` parses user-supplied ``--rules`` YAML outside the scan
+    # ``--rules`` packs are user-supplied YAML parsed/compiled OUTSIDE the scan
     # try/except below; a hand-edited or malformed pack would crash the CLI with
-    # a raw ``yaml.YAMLError`` traceback instead of a clean error. Catch it here
-    # and surface a clear, path-aware message (fix-malformed-baseline-rules-yaml-
-    # crash). ``click.Path(exists=True)`` already covers FileNotFoundError for
-    # ``--rules``, so only the YAML-syntax failure needs guarding.
-    #
-    # v0.9.0 (fix-baseline-rules-invalid-utf8-crash): the v0.8.0 guard caught
-    # ``yaml.YAMLError`` (a YAML *syntax* error) but NOT ``UnicodeDecodeError`` —
-    # ``_load_pack_file`` reads with strict ``read_text(encoding="utf-8")``, so a
-    # ``--rules`` pack containing invalid UTF-8 BYTES (a stray ``\xff``, or a file
-    # saved as Latin-1/CP1252) raised an uncaught ``UnicodeDecodeError`` (a
-    # ``ValueError``, NOT a ``yaml.YAMLError``) and crashed the CLI with a raw
-    # traceback. Widen the except tuple to also catch ``UnicodeDecodeError`` so a
-    # bad-encoding pack surfaces the same clean, path-aware error.
-    if rules_paths:
-        try:
-            rules = load_rule_packs(list(rules_paths))
-        except (yaml.YAMLError, UnicodeDecodeError) as exc:
-            raise click.ClickException(
-                f"rules file is malformed or not valid UTF-8 "
-                f"({', '.join(rules_paths)}): {exc}; fix the file and re-run"
-            ) from exc
-    else:
-        rules = None
+    # a raw traceback (``yaml.YAMLError`` / ``UnicodeDecodeError`` / ``re.error``
+    # / ``ValueError``) instead of a clean error. The shared guarded loader
+    # surfaces a clear, path-aware message and is reused by ``rules list`` so
+    # the two commands cannot diverge (v0.8.0 -> v0.9.0 -> v0.10.0
+    # crash-handling arc; fix-scan-rules-semantic-error-crash,
+    # fix-rules-list-unguarded-load).
+    rules = _load_rule_packs_guarded(rules_paths) if rules_paths else None
     # When updating the baseline we capture *all* findings, so don't pre-filter.
     # Use an EMPTY baseline (not None) so that forwarding ``baseline_path`` to
     # the scan seam below can't trigger delegated baseline loading/filtering
@@ -262,8 +286,12 @@ def rules_list(
     no_color: bool,
 ) -> None:
     """Print the active merged ruleset (one row per rule)."""
+    # ``--rules`` packs were parsed/compiled here with NO guard in v0.9.0, so a
+    # malformed/invalid pack crashed ``rules list`` with a raw traceback on the
+    # identical input ``scan`` already handled. Reuse the shared guarded loader
+    # so the two commands cannot diverge (fix-rules-list-unguarded-load).
     active: list[Rule] = (
-        load_rule_packs(list(rules_paths)) if rules_paths else load_rules()
+        _load_rule_packs_guarded(rules_paths) if rules_paths else load_rules()
     )
     console = Console(no_color=no_color, highlight=False)
     table = Table(
