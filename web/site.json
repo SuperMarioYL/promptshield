@@ -1,64 +1,137 @@
 {
   "schema": 1,
-  "content_version": "v0.9.0",
+  "content_version": "v0.10.0",
   "name": "promptshield",
   "github": "https://github.com/SuperMarioYL/promptshield",
   "host": "promptshield.lei6393.com",
-  "lang": { "primary": "zh", "toggle": true },
-  "accent": ["#d6503f", "#b91c1c", "#e0913a"],
+  "lang": {
+    "primary": "zh",
+    "toggle": true
+  },
+  "accent": [
+    "#d6503f",
+    "#b91c1c",
+    "#e0913a"
+  ],
   "hero": {
-    "eyebrow": { "zh": "离线 · 零 API key · 秒级", "en": "Offline · No API key · Seconds" },
-    "headline": { "zh": "代码注释里藏的指令\n你的 agent 会照做——先拦下", "en": "Instructions hidden in comments\nyour agent will follow — block them first" },
+    "eyebrow": {
+      "zh": "离线 · 零 API key · 秒级",
+      "en": "Offline · No API key · Seconds"
+    },
+    "headline": {
+      "zh": "代码注释里藏的指令\n你的 agent 会照做——先拦下",
+      "en": "Instructions hidden in comments\nyour agent will follow — block them first"
+    },
     "sub": {
       "zh": "有人会把删库、偷密钥外发这类指令藏进注释、docstring 或 commit message，等 Claude Code / Cursor 读到并照做。PromptShield 在 agent 读取仓库、diff 或 PR 之前，把这些文本扫一遍——命中任何 HIGH 就让 CI 变红。",
       "en": "Someone hides delete-the-repo or secret-stealing commands in comments, docstrings or commit messages, waiting for Claude Code or Cursor to read and follow them. Before your agent reads a repo, diff or PR, PromptShield scans that text — any HIGH turns CI red."
     },
     "command": "pip install promptshield",
-    "ctaGithub": { "zh": "在 GitHub 查看", "en": "View on GitHub" },
-    "scroll": { "zh": "向下滚动", "en": "Scroll" }
+    "ctaGithub": {
+      "zh": "在 GitHub 查看",
+      "en": "View on GitHub"
+    },
+    "scroll": {
+      "zh": "向下滚动",
+      "en": "Scroll"
+    }
   },
   "advantages": [
     {
-      "title": { "zh": "扫的是 agent 真会照做的那段文本", "en": "Scans the text your agent will actually follow" },
+      "title": {
+        "zh": "扫的是 agent 真会照做的那段文本",
+        "en": "Scans the text your agent will actually follow"
+      },
       "body": {
         "zh": "注释、docstring、commit message、markdown、配置、字符串字面量——这些 agent 会读进上下文并照做的文本，逐段扫一遍。同一行里一段字符串收尾后紧跟的注释、或紧挨着的第二段字符串也不漏扫——不再因收尾就静默跳过，藏在后面的注入照样命中。",
         "en": "Comments, docstrings, commit messages, markdown, config, string literals — the text an agent reads into context and acts on, scanned segment by segment. A comment or a second string tucked right after a same-line string's close is scanned too — no longer silently skipped past the close, so an injection hiding behind it is still caught."
       },
-      "chips": ["› 注释 · docstring", "› commit · markdown · 配置", "› 收尾后照样扫"]
+      "chips": [
+        "› 注释 · docstring",
+        "› commit · markdown · 配置",
+        "› 收尾后照样扫"
+      ]
     },
     {
-      "title": { "zh": "五类藏起来的注入，都认得", "en": "Five hidden-injection flavors, all recognized" },
+      "title": {
+        "zh": "五类藏起来的注入，都认得",
+        "en": "Five hidden-injection flavors, all recognized"
+      },
       "body": {
         "zh": "对 agent 喊话覆盖指令、删库销数据、偷读密钥外发、骗 agent 滥用工具、用编码或 Unicode 藏载荷——五类都能命中；高噪声措辞二次确认压误报，让你信得过每一个告警。",
         "en": "Instruction overrides, data destruction, secret exfiltration, tool abuse, obfuscated payloads — five classes, all caught; noisy wording gets a second confirmation to keep false alarms down so every alert is one you trust."
       },
-      "chips": ["› 5 类注入", "› 低误报"]
+      "chips": [
+        "› 5 类注入",
+        "› 低误报"
+      ]
     },
     {
-      "title": { "zh": "藏在编码层背后的，照样抓", "en": "Hidden behind encoding? Still caught" },
+      "title": {
+        "zh": "藏在编码层背后的，照样抓",
+        "en": "Hidden behind encoding? Still caught"
+      },
       "body": {
         "zh": "有人把注入塞进 base64、hex、零宽字符或同形字里躲过人工 review——每段文本会先解码再扫一遍，藏在编码层背后的注入照样命中。",
         "en": "Someone stuffs an injection into base64, hex, zero-width or homoglyph characters to dodge human review — every segment is decoded and rescanned, so an injection hidden behind an encoding layer is still caught."
       },
-      "chips": ["› base64 · hex", "› 零宽 · 同形字"]
+      "chips": [
+        "› base64 · hex",
+        "› 零宽 · 同形字"
+      ]
     },
     {
-      "title": { "zh": "基线和规则文件，怎么改都不会咬你", "en": "Your baseline and rules files won't bite you — however you edit them" },
+      "title": {
+        "zh": "基线和规则文件，怎么改都不会咬你",
+        "en": "Your baseline and rules files won't bite you — however you edit them"
+      },
       "body": {
         "zh": "留在仓库里的基线文件不会再把自己扫成误报 HIGH——它只压该压的，每一个告警都是真的。你整理已接受告警、或写自己的规则包时手误写错、或文件存成了错的字符编码，也不会甩出一长串看不懂的报错让 CI 莫名变红——只告诉你哪个文件坏了，改完一行就能继续。出现任何 HIGH 就退出 1 把 check 变红，告警也留在 GitHub 的 Security 标签页备查。扫描不发网络请求，不需要 git 或 gh。",
         "en": "A baseline file you keep in the repo no longer scans itself into false HIGH alarms — it only suppresses what it should, so every alert is real. Typo the YAML while trimming accepted findings or writing your own rule pack, or have a baseline/rules file saved in the wrong character encoding, and instead of an unreadable crash dump that turns CI red for no clear reason, you get one line naming the broken file — fix it and move on. Any HIGH exits 1 to turn the check red, and findings also stay on GitHub's Security tab for the record. The scan makes no network calls and needs no git or gh."
       },
-      "chips": ["› 基线不自扫", "› 写错 / 存错编码 · 只报错不崩", "› 留在 Security 标签页"]
+      "chips": [
+        "› 基线不自扫",
+        "› 写错 / 存错编码 · 只报错不崩",
+        "› 留在 Security 标签页"
+      ]
     }
   ],
-  "scene": { "kind": "hub-nodes", "nodes": ["覆盖指令", "删库销数据", "偷密钥外发", "滥用工具", "混淆载荷"] },
+  "scene": {
+    "kind": "hub-nodes",
+    "nodes": [
+      "覆盖指令",
+      "删库销数据",
+      "偷密钥外发",
+      "滥用工具",
+      "混淆载荷"
+    ]
+  },
   "cta": {
-    "headline": { "zh": "在每个 PR 上拦住藏起来的注入", "en": "Block hidden injections on every PR" },
+    "headline": {
+      "zh": "在每个 PR 上拦住藏起来的注入",
+      "en": "Block hidden injections on every PR"
+    },
     "sub": {
       "zh": "Apache-2.0 许可，pip install promptshield 即用；把仓库自带的 workflow 复制进 .github/workflows/，每个 PR 自动拦住高风险注入。",
       "en": "Apache-2.0-licensed, pip install promptshield; copy the bundled workflow into .github/workflows/ and every PR auto-blocks HIGH injections."
     },
-    "button": { "zh": "在 GitHub 查看", "en": "View on GitHub" }
+    "button": {
+      "zh": "在 GitHub 查看",
+      "en": "View on GitHub"
+    }
   },
-  "footer": { "tag": { "zh": "开源 · Apache-2.0", "en": "Open source · Apache-2.0" } }
+  "footer": {
+    "tag": {
+      "zh": "开源 · Apache-2.0",
+      "en": "Open source · Apache-2.0"
+    }
+  },
+  "generated_at": "2026-08-12T19:47:05Z",
+  "changelog": [
+    {
+      "version": "v0.10.0",
+      "zh": "当 --rules 规则包存在错误的正则、severity 或缺失字段时，scan 与 rules list 现在都会抛出干净错误（而非原始 traceback）——两者共享同一个受守护的加载器，不会再各自为政。",
+      "en": "scan and rules list now surface a clean error (not a raw traceback) when a --rules pack has a bad regex, severity, or missing key — the guarded loader is shared by both commands so they can't diverge."
+    }
+  ]
 }
