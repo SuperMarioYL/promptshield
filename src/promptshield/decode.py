@@ -45,6 +45,10 @@ _HOMOGLYPH_MAP: dict[str, str] = {
     "с": "c",  # с
     "у": "y",  # у
     "х": "x",  # х
+    "і": "i",  # і (U+0456) Byelorussian-Ukrainian I — shape-identical to Latin
+    # i; NFKC leaves it intact, so an injection word-anchored on it (``іgnore``)
+    # evaded every scan mode until this entry was added
+    # (feat-homoglyph-confusables-map-extension).
     # Cyrillic capital letters -> Latin
     "А": "A",  # А
     "В": "B",  # В
@@ -57,10 +61,12 @@ _HOMOGLYPH_MAP: dict[str, str] = {
     "С": "C",  # С
     "Т": "T",  # Т
     "Х": "X",  # Х
+    "І": "I",  # І (U+0406) capital sibling of і above
     # Greek -> Latin (lowercase + uppercase look-alikes)
     "α": "a",  # α
     "ο": "o",  # ο
     "ρ": "p",  # ρ
+    "ι": "i",  # ι (U+03B9) iota — shape-identical to Latin i, NFKC-intact
     "Α": "A",  # Α
     "Β": "B",  # Β
     "Ε": "E",  # Ε
@@ -70,6 +76,7 @@ _HOMOGLYPH_MAP: dict[str, str] = {
     "Ρ": "P",  # Ρ
     "Τ": "T",  # Τ
     "Χ": "X",  # Χ
+    "Ι": "I",  # Ι (U+0399) capital iota — NFKC-intact sibling of ι above
 }
 
 # Visible ASCII (letters, digits, punctuation, common whitespace). Used to

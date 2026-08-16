@@ -300,11 +300,35 @@ def extract_surfaces_from_text(
             raw = raw[end + len(closer) :]
 
         # --- start of a triple-quoted block? ---
+        # A single-line triple's close leaves a remainder that may itself open
+        # ANOTHER triple on the same physical line — including a MULTI-LINE
+        # triple (the second operand of an implicit string concatenation). The
+        # m6 minimal close branch `break`-ed the delimiter loop and fell through
+        # ONLY to block-comment / line-comment / string-literal extraction, so a
+        # second `"""` opening a multi-line triple was never re-recognized and
+        # `in_triple` was never set — the multi-line triple's body on subsequent
+        # physical lines was silently never scanned (an injection hidden as the
+        # second operand after a single-line triple scanned CLEAN). Re-detect in
+        # a `while` loop until no triple remains, so a trailing comment / string
+        # literal / implicit-concat triple (single- OR multi-line) sitting after
+        # the closing triple is no longer silently dropped
+        # (fix-triple-single-line-close-drops-multiline-trailing-triple; supersedes
+        # the m6 fix-triple-single-line-close-drops-trailing-content `break`).
         opened_triple = False
-        for q in _TRIPLE_QUOTES:
-            idx = raw.find(q)
-            if idx == -1:
-                continue
+        while True:
+            # Pick the first triple-quote STYLE (in _TRIPLE_QUOTES order) that
+            # appears on the remainder — same selection rule as before, so the
+            # earlier single-line-triple + trailing-comment path is unchanged.
+            q: str | None = None
+            idx = -1
+            for cand in _TRIPLE_QUOTES:
+                i = raw.find(cand)
+                if i != -1:
+                    q = cand
+                    idx = i
+                    break
+            if q is None:
+                break
             # Code before the opening triple-quote can still carry a prose string
             # literal with an injection; scan it before the rest is consumed (m13).
             for lit in _extract_string_literals(raw[:idx]):
@@ -314,27 +338,22 @@ def extract_surfaces_from_text(
             rest = raw[idx + len(q) :]
             close = rest.find(q)
             if close != -1:
-                # single-line triple-quoted string. Scan the docstring, then fall
-                # through to scan the post-close REMAINDER — a trailing comment
-                # / string literal / implicit-concat triple sitting after the
-                # closing triple must not be silently dropped
-                # (fix-triple-single-line-close-drops-trailing-content). The
-                # previous code set opened_triple and `continue`d straight to
-                # the next physical line, so `BANNER = """x"""  # <injection>`
-                # scanned only the docstring and the trailing comment was never
-                # read. Mirroring the inline block-comment close path below
-                # (:341) we reassign raw to the remainder and let the block-
-                # comment / line-comment / string-literal extraction run on it.
+                # single-line triple-quoted string. Scan the docstring, then
+                # reassign raw to the post-close REMAINDER and LOOP to re-detect
+                # a further triple (single- OR multi-line) on the same line.
+                # When no triple remains the loop breaks and falls through to
+                # the block-comment / line-comment / string-literal extraction
+                # below — so a trailing comment after a single-line triple is
+                # still scanned (no regression of the m6 trailing-content fix),
+                # AND a multi-line triple hidden as the second operand after a
+                # single-line triple is now recognized instead of dropped.
                 doc = rest[:close].strip()
                 if doc:
                     surfaces.append(
                         Surface(doc, file, lineno, SurfaceKind.DOCSTRING)
                     )
                 raw = rest[close + len(q) :]
-                # break the DELIMITER loop only — do NOT open a multi-line
-                # triple, so `if opened_triple: continue` below is skipped and
-                # the remainder is scanned instead of `continue`-d past.
-                break
+                continue
             # multi-line triple opens here: consume the line, wait for the
             # closer on a subsequent line.
             in_triple = q

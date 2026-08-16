@@ -77,21 +77,29 @@ def test_implicit_concat_second_triple_is_scanned():
 
     Python implicit string concatenation (two adjacent single-line triple-quoted
     literals on one line) is a real way to smuggle a payload past the triple-close
-    branch: before the fix only the first triple's body was scanned and the
-    second was dropped. After the fix the post-close remainder is scanned and the
-    second triple's body is recovered as a string-literal surface by the
-    fall-through extraction.
+    branch: before the v0.6.0 fix only the first triple's body was scanned and
+    the second was dropped. v0.6.0 recovered the second triple's body via the
+    fall-through *string-literal* extraction — triple detection was NOT re-run
+    on the post-close remainder, so the second triple was matched by the
+    single/double-quote literal regex as a STRING_LITERAL. v0.11.0
+    (fix-triple-single-line-close-drops-multiline-trailing-triple) re-runs
+    triple-quote detection on the remainder in a ``while`` loop, so the second
+    triple is now correctly recognized AS a triple and its body is recovered as
+    a DOCSTRING surface (the more accurate kind) — the injection is still
+    scanned and still flagged, now attributed to the docstring surface.
     """
     line = f'"""benign""" """{_INJECTION}"""\n'
     surfaces = _surfaces(line)
-    literals = [s for s in surfaces if s.kind is SurfaceKind.STRING_LITERAL]
-    assert literals, (
-        "a second implicit-concat triple after a single-line close must be "
-        "scanned, not dropped (fix-triple-single-line-close-drops-trailing-content)"
-    )
-    assert any(_INJECTION in s.text for s in literals)
-    # The first triple's body is still scanned as a docstring.
     docs = [s for s in surfaces if s.kind is SurfaceKind.DOCSTRING]
+    assert docs, (
+        "a second implicit-concat triple after a single-line close must be "
+        "scanned, not dropped (fix-triple-single-line-close-drops-multiline-"
+        "trailing-triple)"
+    )
+    assert any(_INJECTION in s.text for s in docs), (
+        "the second triple's injection body must be recovered after the close"
+    )
+    # The first triple's body is still scanned as a docstring too.
     assert any("benign" in s.text for s in docs)
 
 

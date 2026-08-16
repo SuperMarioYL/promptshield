@@ -243,7 +243,24 @@ def scan(
         raise click.ClickException(str(exc)) from exc
 
     if update_baseline:
-        n = write_baseline(result.findings, baseline_path)
+        # ``write_baseline`` (baseline.py) opens ``baseline_path`` for writing
+        # OUTSIDE the scan try/except above — a ``--baseline`` path whose parent
+        # directory does not exist raises an uncaught ``FileNotFoundError``
+        # (an ``OSError``), and a read-only / unwritable target directory raises
+        # a ``PermissionError``. Both crashed the CLI with a raw traceback +
+        # exit 1 instead of a clean ``click.ClickException`` on the identical
+        # "user points --baseline somewhere odd" scenario the v0.8.0 / v0.9.0 /
+        # v0.10.0 crash-handling arc already closed for the LOAD side
+        # (``Baseline.load`` / ``load_rule_packs``). This is the unguarded WRITE
+        # sibling of that arc — guard it the same way
+        # (fix-update-baseline-write-unguarded-oserror).
+        try:
+            n = write_baseline(result.findings, baseline_path)
+        except OSError as exc:
+            raise click.ClickException(
+                f"cannot write baseline file {baseline_path}: {exc}; "
+                f"check the path and permissions"
+            ) from exc
         click.echo(f"Wrote {n} findings to baseline {baseline_path}.")
         sys.exit(0)
 
