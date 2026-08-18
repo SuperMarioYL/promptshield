@@ -119,25 +119,46 @@ _BLOCK_COMMENT_PAIRS = (
 # Triple-quoted docstring / multiline-string delimiters.
 _TRIPLE_QUOTES = ('"""', "'''")
 
-# A quoted string literal on a single line (handles escaped quotes crudely).
-_STRING_LITERAL_RE = re.compile(r"""(['"])((?:\\.|(?!\1).)*)\1""")
+# A quoted string literal on a single line. The body alternation is
+# unambiguous on a backslash: ``\\.`` consumes a backslash + the next char as
+# ONE unit, and the negated char class ``[^"<q>\\]`` (which excludes BOTH the
+# quote and the backslash) consumes any other single char — so a backslash is
+# NEVER matched by the non-escape branch. A pathological input (a quote then a
+# long run of backslashes with NO closing quote) can no longer tile the run by
+# 1s and 2s, so matching is linear instead of exponential
+# (fix-string-literal-regex-redos: the old single backreference pattern
+# ``(['"])((?:\\.|(?!\1).)*)\1`` let ``(?!\1).`` ALSO match a lone backslash,
+# so ``"`` + N backslashes blew up at ~Fibonacci(N) — 44 backslashes hung the
+# scanner for ~169s). Split into per-quote alternatives rather than one
+# backreference regex so each side can use its own negated class.
+_STRING_LITERAL_RE = re.compile(
+    r'"((?:\\.|[^"\\])*)"|\'((?:\\.|[^\'\\])*)\''
+)
 
 
-def _in_open_string(prefix: str) -> bool:
-    """True if ``prefix`` ends inside an unclosed single/double-quoted string.
+def _quote_state(
+    text: str, start_quote: str | None = None
+) -> tuple[str | None, bool]:
+    """Walk ``text`` tracking single/double-quote state.
 
-    Walks the prefix tracking quote state so a comment marker is only skipped
-    when it genuinely sits inside an open string. The old implementation used a
-    crude per-quote parity count (``prefix.count("'") % 2``), which counted
-    apostrophes *inside* a double-quoted string — so ``msg = "don't"  # …`` was
-    misread as having an open ``'`` string and the ``#`` comment was dropped
-    entirely, silently un-scanning the injection (m8). This walk respects the
-    active delimiter and backslash escapes; it is not an AST, so it stays within
-    the v0.1 "no per-language parser" scope.
+    Returns ``(open_quote, escaped)`` — the quote char (``'`` / ``"``) still
+    open at the end of ``text`` (``None`` if back in code mode), and whether
+    ``text`` ends on a backslash that is escaping the (absent) next char inside
+    that open string. The walk respects the active delimiter and backslash
+    escapes: a backslash escapes the next char only *while inside a string*
+    (so a ``\\`` line continuation in plain code does not start an escape),
+    and an escaped quote (``\\"`` / ``\\'``) is not treated as a close. It is
+    not an AST, so it stays within the v0.1 "no per-language parser" scope.
+
+    Shared by :func:`_in_open_string` (line-local comment gating) and the
+    cross-line continuation tracker in :func:`extract_surfaces_from_text`
+    (fix-line-continued-string-hides-trailing-comment). Supersedes the old
+    parity count (``count("'") % 2``) that counted apostrophes inside a
+    double-quoted string and dropped ``msg = "don't"  # …``'s comment (m8).
     """
-    quote: str | None = None
+    quote = start_quote
     escaped = False
-    for ch in prefix:
+    for ch in text:
         if escaped:
             escaped = False
             continue
@@ -149,10 +170,42 @@ def _in_open_string(prefix: str) -> bool:
         if quote is None:
             if ch == '"' or ch == "'":
                 quote = ch
-        else:
-            if ch == quote:
-                quote = None
-    return quote is not None
+        elif ch == quote:
+            quote = None
+    return quote, escaped
+
+
+def _in_open_string(prefix: str) -> bool:
+    """True if ``prefix`` ends inside an unclosed single/double-quoted string.
+
+    Thin predicate over :func:`_quote_state`. It is strictly line-local — it
+    has no memory of a string opened on a PRIOR line via ``\\`` continuation;
+    that cross-line state is threaded by :func:`extract_surfaces_from_text`
+    (fix-line-continued-string-hides-trailing-comment).
+    """
+    return _quote_state(prefix)[0] is not None
+
+
+def _find_unescaped_quote(line: str, quote: str) -> int:
+    """Index of the first unescaped ``quote`` char in ``line`` (a closer), or -1.
+
+    A backslash escapes the following char so an escaped quote (``\\"`` /
+    ``\\'``) is NOT treated as the close. Used to find the closing quote of a
+    string opened on a prior line via ``\\`` line continuation, so the closing
+    quote on the continued line is recognized as a CLOSE rather than as opening
+    a new string (fix-line-continued-string-hides-trailing-comment).
+    """
+    escaped = False
+    for i, ch in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\":
+            escaped = True
+            continue
+        if ch == quote:
+            return i
+    return -1
 
 
 def _find_line_comment(line: str) -> tuple[int, str] | None:
@@ -212,10 +265,17 @@ def _strip_line_comment(line: str) -> str | None:
 
 
 def _extract_string_literals(line: str) -> list[str]:
-    """Return quoted string-literal contents on ``line`` (non-trivial only)."""
+    """Return quoted string-literal contents on ``line`` (non-trivial only).
+
+    Iterates the unambiguous per-quote :data:`_STRING_LITERAL_RE` with
+    :meth:`re.Pattern.finditer` so matches are yielded left-to-right in source
+    order (preserving surface ordering / fingerprints). The split-alternative
+    pattern has two independent body groups (one per quote), so the body is
+    whichever group actually participated in the match (the other is ``None``).
+    """
     out: list[str] = []
-    for _, body in _STRING_LITERAL_RE.findall(line):
-        body = body.strip()
+    for m in _STRING_LITERAL_RE.finditer(line):
+        body = (m.group(1) if m.group(1) is not None else m.group(2)).strip()
         # Only keep literals that look like prose — they're the ones that can
         # carry hidden instructions. Skip short / pathy / format-string noise.
         if len(body) >= 12 and " " in body:
@@ -260,6 +320,13 @@ def extract_surfaces_from_text(
     triple_start_line = 0
     triple_buf: list[str] = []
     in_block: tuple[str, str] | None = None
+    # Single/double-quote string left open at the end of the prior line via a
+    # ``\`` line continuation (fix-line-continued-string-hides-trailing-
+    # comment). ``_in_open_string`` / ``_find_line_comment`` are line-local,
+    # so without threading this state a closing quote on the continued line is
+    # misread as OPENING a string and a trailing ``#`` comment after it is
+    # skipped as "inside an open string" — the injection is never scanned.
+    carried_quote: str | None = None
 
     for i, raw in enumerate(lines):
         lineno = base_line + i
@@ -298,6 +365,24 @@ def extract_surfaces_from_text(
                 surfaces.append(Surface(body, file, lineno, SurfaceKind.COMMENT))
             in_block = None
             raw = raw[end + len(closer) :]
+
+        # --- close a single/double-quoted string opened on a PRIOR line via
+        # ``\`` line continuation (fix-line-continued-string-hides-trailing-
+        # comment). ``carried_quote`` is set at the end of the previous line
+        # when it ended inside an open string on a trailing backslash. The
+        # closing quote on this continued line must be recognized as a CLOSE,
+        # not as opening a new string — otherwise ``_find_line_comment`` sees
+        # the rest of the line as "inside an open string" and skips a trailing
+        # ``#`` comment (and its injection). Skip to (and past) the real closer
+        # so the remainder is scanned in closed-string mode; if no closer
+        # arrives this line, the whole line stays inside the string and we keep
+        # carrying the quote.
+        if carried_quote is not None:
+            close = _find_unescaped_quote(raw, carried_quote)
+            if close == -1:
+                continue
+            raw = raw[close + 1 :]
+            carried_quote = None
 
         # --- start of a triple-quoted block? ---
         # A single-line triple's close leaves a remainder that may itself open
@@ -422,6 +507,20 @@ def extract_surfaces_from_text(
             surfaces.append(
                 Surface(lit, file, lineno, SurfaceKind.STRING_LITERAL)
             )
+
+        # Carry single/double-quote open-string state to the next physical
+        # line. Seed the carry ONLY when this line ends INSIDE an open string on
+        # a trailing backslash (a real ``\`` continuation) — a merely unclosed
+        # quote (e.g. an apostrophe in code like ``it's``) does NOT carry, so
+        # the following line is still scanned as code and a comment there is
+        # not swallowed (fix-line-continued-string-hides-trailing-comment).
+        # Every path that ``continue``s above (a still-open triple or block, a
+        # newly opened triple/block, or a found line comment) leaves
+        # ``carried_quote`` at ``None`` for the next line, which is correct:
+        # those multi-line states are tracked by ``in_triple`` / ``in_block``
+        # instead, and a line comment runs to end-of-line.
+        quote, escaped = _quote_state(raw, None)
+        carried_quote = quote if escaped else None
 
     # An unterminated triple-quote (truncated file / diff hunk) — flush it.
     if in_triple is not None and triple_buf:

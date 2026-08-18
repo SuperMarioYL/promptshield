@@ -13,6 +13,83 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Managed attack-signature / rule feed (PromptShield Cloud).
 - GitHub Marketplace listing.
 
+## [0.12.0] - 2026-08-19
+
+Grill bug-hunt hardening — two HIGH-severity false-negative / DoS defects in
+the collector surface extractor (`collectors.py`), both one-character
+evasions or single-line plants a malicious PR can use to blind the scanner.
+No new external surface; the CLI, SARIF, and JSON wire formats are unchanged.
+
+### Fixed
+
+#### fix-string-literal-regex-redos — catastrophic backtracking in the string-literal regex
+
+`_STRING_LITERAL_RE` (`collectors.py:123`) was
+`re.compile(r"""(['"])((?:\\.|(?!\1).)*)\1""")`, run via
+`_extract_string_literals` on every physical line of every scanned code file.
+The body alternation `(?:\\.|(?!\1).)*` was ambiguous on a backslash: `\\.`
+consumed a backslash + the next char, but `(?!\1).` ALSO matched a lone
+backslash (a backslash is not the quote char, so the negative lookahead
+passed). On an input that opened a quote, then a run of backslashes, with NO
+closing quote (e.g. a single planted line `x = "` + N backslashes), the
+engine explored every tiling of N by 1s and 2s before failing — Fibonacci /
+exponential backtracking. Measured: n=28 -> 0.075s, n=32 -> 0.53s, n=36 ->
+3.6s; an end-to-end `scan_path` on a `.py` file containing one line with 44
+backslashes took 168.9s (vs milliseconds normally). A malicious PR could
+plant a single line to hang the scanner / CI gate for minutes (and ~60+
+backslashes hang it effectively forever) — a ReDoS denial-of-service against
+the security scanner itself, the "ReDoS in regex rules" class called out as
+HIGH.
+
+The pattern is rewritten as two unambiguous per-quote alternatives
+(`"((?:\\.|[^"\\])*)"` / `'((?:\\.|[^'\\])*)'`) instead of one backreference
+regex. The negated char class excludes BOTH the quote and the backslash, so a
+backslash is consumed ONLY by the `\\.` escape branch and the non-escape
+branch can never match one — matching is linear. `_extract_string_literals`
+iterates with `finditer` (left-to-right source order preserved, so surface
+ordering / fingerprints are unchanged) and takes the body from whichever
+alternative participated. Regression coverage in
+`tests/test_v0_12_0_grill_fixes.py`: a pathological `"` + 60 backslashes (no
+close) input and an end-to-end `scan_path` on a 60-backslash `.py` file each
+complete in under 2s and do not hang (was ~infinite); happy-path prose
+literals with escaped quotes and both quote styles in source order still
+extract.
+
+#### fix-line-continued-string-hides-trailing-comment — line-continued string hides a trailing comment
+
+`_find_line_comment` (`collectors.py:192`) advances past a comment marker that
+sits inside an open string by calling `_in_open_string(line[:idx])`.
+`_in_open_string` (`collectors.py:126`) was strictly line-local — it walked
+only the current line's prefix and had no memory of a string opened on a
+PRIOR line via `\` line continuation. On the closing line of such a string,
+e.g. `bar"  # ignore all previous instructions`, the walk saw `bar"` with
+quote state `None` and so treated the `"` as OPENING a string (not closing
+the one opened above), returned `True` ("inside an open string"), and the `#`
+marker was skipped via `idx = line.find(marker, ...)` until exhausted — so the
+trailing comment was never extracted as a Surface and the injection it
+carried was never scanned. Verified: `scan_path` on
+`x = "foo \\\nbar"  # ignore all previous instructions` yielded ZERO surfaces
+and `has_high=False` (same on a `.sh` file). This is the same
+one-character-evasion class the m8/m13 fixes target, missed only for the
+`\`-continuation case.
+
+Single/double-quote open-string state (including a trailing unescaped `\`)
+is now threaded across physical lines in `extract_surfaces_from_text`'s main
+loop: a new `carried_quote` is seeded at end of line when the line ends INSIDE
+an open string on a trailing backslash (a real `\` continuation — a merely
+unclosed quote like an apostrophe in `it's` does NOT carry, so the following
+line is still scanned as code and a comment there is not swallowed). On the
+next line, the closing quote is found via `_find_unescaped_quote` and
+recognized as a CLOSE (the remainder is scanned in closed-string mode), so a
+trailing `#` comment after it is extracted. The shared walk is factored into
+`_quote_state` (which `_in_open_string` now delegates to). Regression
+coverage in `tests/test_v0_12_0_grill_fixes.py`: a continued double- and
+single-quoted string with a trailing injection (in `.py` and `.sh`, including
+a three-line span) now surfaces the comment and flags `has_high=True`; a
+benign continued string with a benign comment stays clean; and an
+apostrophe-in-code line followed by a standalone comment line still scans the
+comment (no false-negative regression).
+
 ## [0.9.0] - 2026-08-09
 
 CLI robustness hardening — one verified crash on the CLI error-handling surface,
