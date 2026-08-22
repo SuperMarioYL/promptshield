@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "content_version": "v0.11.0",
+  "content_version": "v0.13.0",
   "name": "promptshield",
   "github": "https://github.com/SuperMarioYL/promptshield",
   "host": "promptshield.lei6393.com",
@@ -126,8 +126,18 @@
       "en": "Open source · Apache-2.0"
     }
   },
-  "generated_at": "2026-08-16T12:52:22Z",
+  "generated_at": "2026-08-23T04:10:00Z",
   "changelog": [
+    {
+      "version": "v0.13.0",
+      "en": "promptshield v0.13.0 closes a quadratic DoS in the comment finder: _find_line_comment re-walked the line prefix for each in-string marker occurrence (O(n²)), so a single line opening a quote then filling with # chars hung the scanner for ~29s on 50k chars. Rewritten to a single forward scan tracking quote/escape state (O(n)) — the same ReDoS-class hardening v0.12.0 applied to the string-literal regex, now on the comment path.",
+      "zh": "promptshield v0.13.0 修复注释查找器的二次复杂度 DoS：_find_line_comment 对每个字符串内的标记位都从头重扫前缀（O(n²)），一行开引号后填满 # 字符能让扫描器在 5 万字符下挂死约 29 秒。重写为单遍正向扫描、增量跟踪引号/转义状态（O(n)）——与 v0.12.0 对字符串字面量正则的 ReDoS 加固同源，这次落在注释路径上。"
+    },
+    {
+      "version": "v0.12.0",
+      "en": "promptshield v0.12.0 closed a ReDoS in the string-literal regex (a crafted line could hang the scanner) and tightened string-literal marker detection so a marker inside a quoted string no longer hides a trailing comment.",
+      "zh": "promptshield v0.12.0 修复字符串字面量正则的 ReDoS（构造的一行能让扫描器挂死），并收紧字符串字面量标记检测：引号字符串内的标记不再能隐藏后续注释。"
+    },
     {
       "version": "v0.11.0",
       "en": "promptshield v0.11.0 hardens detection + CLI: closes a multi-line-triple false-negative (an injection hidden as the second operand of an implicit string concat after a single-line triple was silently dropped in v0.10.0); guards the --update-baseline WRITE against a raw OSError traceback (the WRITE sibling of the v0.8-v0.10 LOAD-side crash arc); and extends the homoglyph map so a single Cyrillic i no longer hides `ignore all previous instructions` from any scan mode.",
