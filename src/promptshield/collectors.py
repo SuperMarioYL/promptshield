@@ -224,34 +224,50 @@ def _find_line_comment(line: str) -> tuple[int, str] | None:
 
     A marker char (``#`` / ``//`` / ``--``) can legitimately appear INSIDE a
     quoted string literal before its closing quote, with a real trailing
-    comment later on the same line. The first ``line.find(marker)`` hit then
-    sits inside an open string; the loop below advances past every in-string
-    occurrence until it reaches one outside any string (or exhausts the line),
-    so a string literal containing the marker char can no longer hide a
-    trailing comment (fix-string-literal-marker-hides-trailing-comment).
+    comment later on the same line. Found by a SINGLE forward scan over the line
+    that tracks the single/double-quote + backslash-escape state incrementally
+    (mirroring :func:`_quote_state`), so the first marker reached while NOT
+    inside an open string is the winner — a marker inside a quoted string is
+    still ignored, and the earliest out-of-string marker across
+    :data:`_LINE_COMMENT_MARKERS` still wins
+    (fix-string-literal-marker-hides-trailing-comment).
+
+    Scanning once, instead of the old per-occurrence
+    ``_in_open_string(line[:idx])`` re-walk, makes this O(n) per line
+    (fix-find-line-comment-quadratic-dos): that re-walk re-walked the prefix
+    from char 0 on every marker hit, so a line that opened a quote then filled
+    with N marker chars advanced ``idx`` by 1 each iteration while each re-walk
+    walked O(idx) chars — an O(n^2) loop that hung the scanner for minutes on a
+    ~500 KB single line, the same ReDoS-class denial-of-service v0.12.0 closed
+    for the string-literal regex (fix-string-literal-regex-redos) on a different
+    code path.
     """
-    best: int | None = None
-    best_marker: str | None = None
-    for marker in _LINE_COMMENT_MARKERS:
-        idx = line.find(marker)
-        # Advance past any occurrence that sits inside an open quoted string
-        # (fix-string-literal-marker-hides-trailing-comment). The previous
-        # first-occurrence-only `line.find(marker)` plus a single
-        # `_in_open_string` check `continue`d the WHOLE marker when its first
-        # hit was in-string — so a string literal containing the marker char
-        # before its closing quote hid ANY trailing comment later on the same
-        # line, silently un-scanning its injection. Walk forward until we reach
-        # an occurrence outside any string (or exhaust the line).
-        while idx != -1 and _in_open_string(line[:idx]):
-            idx = line.find(marker, idx + len(marker))
-        if idx == -1:
+    quote: str | None = None
+    escaped = False
+    for i, ch in enumerate(line):
+        if escaped:
+            escaped = False
             continue
-        if best is None or idx < best:
-            best = idx
-            best_marker = marker
-    if best is None or best_marker is None:
-        return None
-    return best, line[best + len(best_marker) :].strip()
+        if ch == "\\":
+            # A backslash escapes the next char only while inside a string.
+            if quote is not None:
+                escaped = True
+            continue
+        if quote is not None:
+            # Inside an open string: only a matching closing quote ends it, so
+            # any marker char here is in-string and must be ignored.
+            if ch == quote:
+                quote = None
+            continue
+        if ch == '"' or ch == "'":
+            quote = ch
+            continue
+        # Code mode (no open string, not an escape): the first marker starting
+        # here is the earliest out-of-string occurrence, hence the winner.
+        for marker in _LINE_COMMENT_MARKERS:
+            if line.startswith(marker, i):
+                return i, line[i + len(marker) :].strip()
+    return None
 
 
 def _strip_line_comment(line: str) -> str | None:

@@ -13,6 +13,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Managed attack-signature / rule feed (PromptShield Cloud).
 - GitHub Marketplace listing.
 
+## [0.13.0] - 2026-08-23
+
+Grill bug-hunt hardening — a HIGH-severity denial-of-service defect in the
+collector comment finder (`collectors.py`), the same ReDoS-class attack
+v0.12.0 closed for the string-literal regex but on a different code path. No
+new external surface; the CLI, SARIF, and JSON wire formats are unchanged.
+
+### Fixed
+
+#### fix-find-line-comment-quadratic-dos — O(n^2) re-walk in the comment finder
+
+`_find_line_comment` (`collectors.py`) advanced past each in-string marker
+occurrence with `while idx != -1 and _in_open_string(line[:idx]): idx =
+line.find(marker, idx + len(marker))`. Each iteration called
+`_in_open_string(line[:idx])` → `_quote_state(line[:idx])`, re-walking the
+prefix from char 0 to `idx`. For a line that opens a quote then fills with N
+marker chars inside the open string (e.g. `"` + N×`#`), `idx` advanced by 1
+each iteration and each `_in_open_string` walked O(idx) chars, so the loop was
+O(n²). A ~500 KB single line (under `MAX_FILE_BYTES`) hung the scanner for
+minutes — reproduced: `_find_line_comment` on `"` + 50000 `#` → 28.9s; an
+end-to-end `scan_path` on a `.py` file whose only line was `"` + 40000 `#` →
+18.5s with `has_high=False` and 0 surfaces (a pure hang, no finding). A
+malicious PR could plant one line to blind the CI gate for minutes. Replaced
+the per-occurrence re-walk with a single forward scan that tracks the
+single/double-quote + backslash-escape state incrementally (mirroring
+`_quote_state`), so the first marker reached while NOT inside an open string
+is the winner — O(n) per line, with no change to detection behavior (the
+in-string marker-skipping semantics are preserved).
+
 ## [0.12.0] - 2026-08-19
 
 Grill bug-hunt hardening — two HIGH-severity false-negative / DoS defects in
