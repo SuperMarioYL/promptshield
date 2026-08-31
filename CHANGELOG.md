@@ -13,6 +13,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Managed attack-signature / rule feed (PromptShield Cloud).
 - GitHub Marketplace listing.
 
+## [0.14.0] - 2026-08-31
+
+Grill bug-hunt hardening — two verified defects: an honest version/changelog
+drift fix (the v0.13.0 ship left `__version__` stale) and a precision-recall
+false-negative on the custom `--baseline` skip path. No new external surface;
+the CLI, SARIF, and JSON wire formats are unchanged (SARIF `tool.driver.version`
+now reports the correct release).
+
+### Fixed
+
+#### fix-version-drift-013-stale-init-version — stale `__version__` misreports the release
+
+The v0.13.0 tag/release shipped `pyproject.toml [project].version = "0.13.0"`
+and a CHANGELOG `## [0.13.0]` entry, but
+`src/promptshield/__init__.py:__version__` still read `"0.12.0"` — the ship
+bumped the package metadata but forgot the in-source constant the CLI and
+SARIF emitter actually read. Verified on the cloned v0.13.0 tag: `promptshield
+--version` printed `promptshield, version 0.12.0`
+(`cli.py` `click.version_option(__version__)`), and
+`sarif_json(result, tool_version=__version__)` stamped
+`runs[0].tool.driver.version = "0.12.0"` into every SARIF log the v0.13.0
+GitHub Action uploaded to code scanning — an every-user-facing metadata defect.
+Fixed by setting `__version__ = "0.14.0"` and adding `tests/test_version_drift.py`
+that parses `pyproject.toml [project].version` and asserts `__version__` (and
+the `--version` CLI output) match it, so a future ship that bumps one but not
+the other fails CI.
+
+#### fix-baseline-skip-over-skips-collateral-same-name-files — custom `--baseline` skip over-skips same-basename files in other directories
+
+`scan_path` (`scanner.py`) threaded a custom `--baseline` filename into
+`collect_path` as `skip_files = {Path(baseline_path).name}` — a BASENAME set —
+and `collect_path` skipped any walked file whose `path.name` was in that set
+(`collectors.py` `if path.name in skip:`). The m9 / v0.6 / v0.7 intent was to
+skip ONLY the baseline file itself (its stored excerpts get re-flagged because
+the finding's `file` differs from the original so `Baseline.filter` can't
+suppress them). But matching by basename alone also skipped an UNRELATED file
+sharing the baseline's basename in another directory — e.g. `promptshield scan
+. --baseline mybase.yaml` silently skipped `subdir/mybase.yaml` too, a
+false-negative on the primary `scan <dir>` use case. Verified end-to-end: a
+tree with `evil.yaml` (injection) and `sub/mybase.yaml` (same injection, same
+basename as the custom baseline) scanned with `scan_path(tree,
+baseline_path="<tree>/mybase.yaml")` yielded ZERO findings on `sub/mybase.yaml`
+while the identical injection in `evil.yaml` was flagged. Fixed by skipping the
+baseline by its RESOLVED ABSOLUTE PATH (a new `skip_baseline` parameter on
+`collect_path`, resolved in `scan_path` and matched with a basename pre-filter
+plus `path.resolve() == skip_baseline`), so only the exact baseline file is
+skipped. The default `.promptshield-baseline.yaml` name is still covered by the
+module-level `SKIP_FILES`; the existing `test_cli_custom_baseline.py` cases
+(absolute custom baseline inside the scan root) stay green because their
+resolved path still matches exactly. Regression test in
+`tests/test_baseline_skip_no_overselect.py`.
+
 ## [0.13.0] - 2026-08-23
 
 Grill bug-hunt hardening — a HIGH-severity denial-of-service defect in the

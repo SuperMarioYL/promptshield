@@ -114,17 +114,31 @@ def scan_path(
     decode: bool = True,
 ) -> ScanResult:
     """Walk ``path`` (file or directory), extract surfaces, and scan them."""
-    # Thread a custom ``--baseline`` filename into collect_path so it is skipped
-    # by name — the m9 self-scan defect recurs for ANY non-default baseline
-    # name kept inside the scanned tree (collect_path's hardcoded SKIP_FILES
-    # only covers ``.promptshield-baseline.yaml``), so without this a custom
+    # Thread the custom ``--baseline`` file into collect_path so it is skipped
+    # — the m9 self-scan defect recurs for ANY non-default baseline name kept
+    # inside the scanned tree (collect_path's hardcoded SKIP_FILES only covers
+    # ``.promptshield-baseline.yaml``), so without this a custom
     # ``--baseline mybase.yaml`` re-flags the baseline file's own stored
     # excerpts and Baseline.filter can't suppress them (the file differs from
     # the original → fingerprint mismatch). fix-custom-baseline-name-self-scan.
-    skip_files = (
-        {Path(baseline_path).name} if baseline_path is not None else None
-    )
-    surfaces = collectors.collect_path(path, skip_files=skip_files)
+    #
+    # Skip the baseline by its RESOLVED ABSOLUTE PATH, not its basename: the
+    # v0.6/v0.7 fix passed ``{Path(baseline_path).name}`` (a basename set) and
+    # collect_path skipped any walked file sharing that basename, which also
+    # skipped an UNRELATED same-basename file in another directory (e.g.
+    # ``subdir/mybase.yaml`` under ``--baseline mybase.yaml``) — a silent
+    # false-negative on the primary ``scan <dir>`` use case
+    # (fix-baseline-skip-over-skips-collateral-same-name-files). The resolved
+    # path matches only the exact baseline file; the default
+    # ``.promptshield-baseline.yaml`` name is still covered by collect_path's
+    # module-level SKIP_FILES.
+    skip_baseline: Path | None = None
+    if baseline_path is not None:
+        try:
+            skip_baseline = Path(baseline_path).resolve()
+        except OSError:
+            skip_baseline = None
+    surfaces = collectors.collect_path(path, skip_baseline=skip_baseline)
     return _scan_surfaces(
         surfaces,
         rules=rules,

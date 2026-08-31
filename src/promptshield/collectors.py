@@ -588,19 +588,25 @@ def collect_path(
     root: str | Path,
     *,
     skip_files: set[str] | None = None,
+    skip_baseline: Path | None = None,
 ) -> list[Surface]:
     """Walk ``root`` (file or directory) and collect Surfaces from text files.
 
     ``skip_files`` extends the module-level :data:`SKIP_FILES` set with extra
-    basenames to skip. It is used to skip a *custom* ``--baseline`` filename:
-    the m9 self-scan defect (the baseline file's own stored excerpts get
-    re-flagged because the finding's ``file`` differs from the original so the
-    fingerprint never matches) recurs for ANY non-default baseline name kept
-    inside the scanned tree — the hardcoded ``SKIP_FILES`` only covers
-    ``.promptshield-baseline.yaml`` (fix-custom-baseline-name-self-scan).
-    ``scan_path`` threads ``{Path(baseline_path).name}`` here. ``None`` (the
-    default) means the module-level :data:`SKIP_FILES` only, preserving the
-    default-name path and ``test_baseline_selfscan``.
+    basenames to skip (kept for callers that still pass basenames).
+
+    ``skip_baseline`` is the RESOLVED ABSOLUTE PATH of a custom ``--baseline``
+    file to skip. It is used to skip the baseline file itself so the m9
+    self-scan defect (the baseline file's own stored excerpts get re-flagged
+    because the finding's ``file`` differs from the original so the
+    fingerprint never matches) does not recur for a non-default baseline name
+    kept inside the scanned tree. Skipping by resolved path — not by basename,
+    as the v0.6/v0.7 fix did via ``skip_files={Path(baseline_path).name}`` —
+    means an UNRELATED same-basename file in another directory is NOT skipped
+    (fix-baseline-skip-over-skips-collateral-same-name-files). The default
+    ``.promptshield-baseline.yaml`` name is covered by the module-level
+    :data:`SKIP_FILES` regardless. ``None`` (the default) means no resolved
+    baseline path is skipped.
     """
     skip = SKIP_FILES if skip_files is None else (SKIP_FILES | set(skip_files))
     root = Path(root)
@@ -631,6 +637,20 @@ def collect_path(
             continue
         if path.name in skip:  # m9 — never re-scan our own baseline file
             continue
+        if skip_baseline is not None and path.name == skip_baseline.name:
+            # Skip ONLY the exact baseline file (resolved), not an unrelated
+            # same-basename file in another directory: the v0.6/v0.7 fix
+            # passed ``{Path(baseline_path).name}`` (a basename set) and this
+            # check skipped ``subdir/<basename>`` too — a silent false-negative
+            # on the primary ``scan <dir>`` use case
+            # (fix-baseline-skip-over-skips-collateral-same-name-files). The
+            # basename pre-filter keeps the per-file resolve cost to the ~1
+            # file that actually shares the name.
+            try:
+                if path.resolve() == skip_baseline:
+                    continue
+            except OSError:
+                pass
         if path.suffix.lower() not in TEXT_EXTENSIONS:
             continue
         try:
