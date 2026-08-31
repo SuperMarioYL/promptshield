@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "content_version": "v0.13.0",
+  "content_version": "v0.14.0",
   "name": "promptshield",
   "github": "https://github.com/SuperMarioYL/promptshield",
   "host": "promptshield.lei6393.com",
@@ -126,8 +126,13 @@
       "en": "Open source · Apache-2.0"
     }
   },
-  "generated_at": "2026-08-23T04:10:00Z",
+  "generated_at": "2026-08-31T04:50:00Z",
   "changelog": [
+    {
+      "version": "v0.14.0",
+      "en": "promptshield v0.14.0 fixes release metadata and a custom-baseline precision gap: the in-source version now matches the release (so `--version` and the version your CI reports stop lagging behind the tag), and a custom `--baseline` name no longer silently skips an unrelated same-name file in another directory — only the exact baseline file is skipped, so a config that shares the baseline's name is still scanned.",
+      "zh": "promptshield v0.14.0 修正发布元数据与自定义基线精度：源码内版本号与发布对齐（`--version` 与 CI 上报的版本不再滞后于 tag），自定义 `--baseline` 名称不再因同名而静默跳过另一目录下的无关文件——只跳过基线文件本身，同名配置照样被扫到。"
+    },
     {
       "version": "v0.13.0",
       "en": "promptshield v0.13.0 closes a quadratic DoS in the comment finder: _find_line_comment re-walked the line prefix for each in-string marker occurrence (O(n²)), so a single line opening a quote then filling with # chars hung the scanner for ~29s on 50k chars. Rewritten to a single forward scan tracking quote/escape state (O(n)) — the same ReDoS-class hardening v0.12.0 applied to the string-literal regex, now on the comment path.",
