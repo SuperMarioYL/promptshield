@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "source_revision": "15a8710d33faefade5f489265e1f5ff35e2582b9",
+  "scope": "Static analysis of shipped benign/malicious Python fixtures with actual CLI exit codes; no fixture execution.",
+  "steps": [
+    {
+      "label": "Recorded run",
+      "body": "Static analysis of shipped benign/malicious Python fixtures with actual CLI exit codes; no fixture execution.",
+      "command": ".venv/bin/python examples/presentation_demo.py",
+      "output": "{\"fixture\": \"clean.py\", \"exit_code\": 0, \"counts\": {\"HIGH\": 0, \"MED\": 0, \"LOW\": 0}, \"rule_ids\": []}\n{\"fixture\": \"utils.py\", \"exit_code\": 1, \"counts\": {\"HIGH\": 4, \"MED\": 0, \"LOW\": 0}, \"rule_ids\": [\"PS001-instruction-override-direct\", \"PS010-destructive-shell\", \"PS011-destructive-instruction\", \"PS020-exfil-secrets\"]}\nScope: deterministic static fixture scan; no fixture code executed and no model called."
+    }
+  ]
+}

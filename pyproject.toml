@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "promptshield"
 version = "0.14.0"
-description = "Scan code your AI coding agent reads, before it obeys hidden prompt-injection instructions."
+description = "Static prompt-injection scanner for repository text, diffs and PR files, with source evidence, rule packs, baselines and SARIF output."
 readme = "README.md"
 requires-python = ">=3.12"
 license = { text = "Apache-2.0" }

@@ -1,0 +1,82 @@
+{
+  "name": "PromptShield",
+  "tagline": "Find suspicious instructions in repository text",
+  "architecture": {
+    "title": "Collect text, match rules, apply reviewed exceptions",
+    "nodes": [
+      {
+        "title": "Collectors",
+        "detail": "paths / diffs / PR JSON"
+      },
+      {
+        "title": "Decode + rules",
+        "detail": "text variants and patterns"
+      },
+      {
+        "title": "Baseline",
+        "detail": "accepted finding fingerprints"
+      },
+      {
+        "title": "ScanResult",
+        "detail": "evidence, counts and exit code"
+      }
+    ],
+    "edges": [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        3
+      ]
+    ]
+  },
+  "process": {
+    "title": "From input to a useful result",
+    "steps": [
+      {
+        "title": "Scan clean file",
+        "detail": "no HIGH findings"
+      },
+      {
+        "title": "Scan injected file",
+        "detail": "matched rule evidence"
+      },
+      {
+        "title": "Apply CI result",
+        "detail": "clean 0 / HIGH 1"
+      }
+    ],
+    "result": "The clean fixture exits 0; the injection fixture exits 1. Neither fixture is executed."
+  },
+  "integrations": {
+    "title": "Supported input and output routes",
+    "items": [
+      {
+        "title": "Repository paths",
+        "detail": "comments and document surfaces"
+      },
+      {
+        "title": "Git diff",
+        "detail": "added lines and commit messages"
+      },
+      {
+        "title": "PR-files JSON",
+        "detail": "saved GitHub API input"
+      },
+      {
+        "title": "Rule packs",
+        "detail": "stacked YAML rules"
+      },
+      {
+        "title": "SARIF / JSON",
+        "detail": "CI and review tools"
+      }
+    ]
+  }
+}
