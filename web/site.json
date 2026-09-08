@@ -148,6 +148,10 @@
           "alt": {
             "en": "Follow the operation",
             "zh": "处理过程"
+          },
+          "mobile": {
+            "light": "/assets/presentation/process-mobile-light.svg",
+            "dark": "/assets/presentation/process-mobile-dark.svg"
           }
         }
       },
@@ -166,6 +170,10 @@
           "alt": {
             "en": "Collect text, match rules, apply reviewed exceptions",
             "zh": "收集文本、匹配规则、应用已审例外"
+          },
+          "mobile": {
+            "light": "/assets/presentation/architecture-mobile-light.svg",
+            "dark": "/assets/presentation/architecture-mobile-dark.svg"
           }
         }
       },
@@ -184,6 +192,10 @@
           "alt": {
             "en": "Connect the pieces",
             "zh": "输入与输出"
+          },
+          "mobile": {
+            "light": "/assets/presentation/integrations-mobile-light.svg",
+            "dark": "/assets/presentation/integrations-mobile-dark.svg"
           }
         }
       }
@@ -212,5 +224,32 @@
       }
     ]
   },
-  "content_version": "v0.14.0"
+  "content_version": "v0.14.0",
+  "changelog": [
+    {
+      "version": "v0.14.0",
+      "en": "promptshield v0.14.0 fixes release metadata and a custom-baseline precision gap: the in-source version now matches the release (so `--version` and the version your CI reports stop lagging behind the tag), and a custom `--baseline` name no longer silently skips an unrelated same-name file in another directory — only the exact baseline file is skipped, so a config that shares the baseline's name is still scanned.",
+      "zh": "promptshield v0.14.0 修正发布元数据与自定义基线精度：源码内版本号与发布对齐（`--version` 与 CI 上报的版本不再滞后于 tag），自定义 `--baseline` 名称不再因同名而静默跳过另一目录下的无关文件——只跳过基线文件本身，同名配置照样被扫到。"
+    },
+    {
+      "version": "v0.13.0",
+      "en": "promptshield v0.13.0 closes a quadratic DoS in the comment finder: _find_line_comment re-walked the line prefix for each in-string marker occurrence (O(n²)), so a single line opening a quote then filling with # chars hung the scanner for ~29s on 50k chars. Rewritten to a single forward scan tracking quote/escape state (O(n)) — the same ReDoS-class hardening v0.12.0 applied to the string-literal regex, now on the comment path.",
+      "zh": "promptshield v0.13.0 修复注释查找器的二次复杂度 DoS：_find_line_comment 对每个字符串内的标记位都从头重扫前缀（O(n²)），一行开引号后填满 # 字符能让扫描器在 5 万字符下挂死约 29 秒。重写为单遍正向扫描、增量跟踪引号/转义状态（O(n)）——与 v0.12.0 对字符串字面量正则的 ReDoS 加固同源，这次落在注释路径上。"
+    },
+    {
+      "version": "v0.12.0",
+      "en": "promptshield v0.12.0 closed a ReDoS in the string-literal regex (a crafted line could hang the scanner) and tightened string-literal marker detection so a marker inside a quoted string no longer hides a trailing comment.",
+      "zh": "promptshield v0.12.0 修复字符串字面量正则的 ReDoS（构造的一行能让扫描器挂死），并收紧字符串字面量标记检测：引号字符串内的标记不再能隐藏后续注释。"
+    },
+    {
+      "version": "v0.11.0",
+      "en": "promptshield v0.11.0 hardens detection + CLI: closes a multi-line-triple false-negative (an injection hidden as the second operand of an implicit string concat after a single-line triple was silently dropped in v0.10.0); guards the --update-baseline WRITE against a raw OSError traceback (the WRITE sibling of the v0.8-v0.10 LOAD-side crash arc); and extends the homoglyph map so a single Cyrillic i no longer hides `ignore all previous instructions` from any scan mode.",
+      "zh": "promptshield v0.11.0 强化检测与 CLI：修复多行三引号隐式拼接导致的漏报（藏于单行 triple 之后的注入此前被静默丢弃）；为 --update-baseline 写入加 OSError 防护（v0.8–v0.10 读侧崩溃的同源写侧崩溃）；扩展同形字映射，单个西里尔字母 і 不再能隐藏 'ignore all previous instructions'。"
+    },
+    {
+      "version": "v0.10.0",
+      "zh": "当 --rules 规则包存在错误的正则、severity 或缺失字段时，scan 与 rules list 现在都会抛出干净错误（而非原始 traceback）——两者共享同一个受守护的加载器，不会再各自为政。",
+      "en": "scan and rules list now surface a clean error (not a raw traceback) when a --rules pack has a bad regex, severity, or missing key — the guarded loader is shared by both commands so they can't diverge."
+    }
+  ]
 }
