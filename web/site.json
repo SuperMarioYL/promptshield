@@ -224,8 +224,13 @@
       }
     ]
   },
-  "content_version": "v0.14.0",
+  "content_version": "v0.15.0",
   "changelog": [
+    {
+      "version": "v0.15.0",
+      "en": "promptshield v0.15.0 makes its own CI gate green: the repo now ships a committed .promptshield-baseline.yaml (the README's documented adoption workflow), so `promptshield scan .` on the tool's own tree suppresses ~100 reviewed self-findings while a new injection still fails the gate. Also: an injection inside a backslash line-continued string literal is now scanned (previously a one-character evasion — the body was silently dropped), and an unreadable --baseline path (e.g. a directory) surfaces a clean error instead of a raw traceback.",
+      "zh": "promptshield v0.15.0 让自己的 CI 门禁变绿：仓库随源码提交 .promptshield-baseline.yaml（README 记载的标准采用流程），对工具自身代码的扫描会抑制约 100 条已审阅的自身命中，而新增注入仍会让检查变红。同时：藏在反斜杠续行字符串字面量里的注入现在会被扫描（此前一个字符即可绕过——字符串体被静默丢弃）；指向目录等不可读路径的 --baseline 现在给出干净错误而不是原始堆栈。"
+    },
     {
       "version": "v0.14.0",
       "en": "promptshield v0.14.0 fixes release metadata and a custom-baseline precision gap: the in-source version now matches the release (so `--version` and the version your CI reports stop lagging behind the tag), and a custom `--baseline` name no longer silently skips an unrelated same-name file in another directory — only the exact baseline file is skipped, so a config that shares the baseline's name is still scanned.",
