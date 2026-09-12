@@ -208,6 +208,37 @@ def _find_unescaped_quote(line: str, quote: str) -> int:
     return -1
 
 
+def _open_string_start(line: str) -> int:
+    """Index of the quote char that opened the string still open at EOL, or -1.
+
+    Walks ``line`` with the same quote/backslash-escape state as
+    :func:`_quote_state`, remembering the opener of the string that never
+    closes by end-of-line. Used by the ``\\`` line-continuation carry to locate
+    where the still-open string's BODY starts, so the body can be buffered and
+    emitted as a STRING_LITERAL surface when the string finally closes
+    (fix-continued-string-body-unscanned).
+    """
+    quote: str | None = None
+    escaped = False
+    start = -1
+    for i, ch in enumerate(line):
+        if escaped:
+            escaped = False
+            continue
+        if ch == "\\":
+            if quote is not None:
+                escaped = True
+            continue
+        if quote is None:
+            if ch == '"' or ch == "'":
+                quote = ch
+                start = i
+        elif ch == quote:
+            quote = None
+            start = -1
+    return start if quote is not None else -1
+
+
 def _find_line_comment(line: str) -> tuple[int, str] | None:
     """Return ``(marker_index, comment_text)`` for ``line``'s earliest comment.
 
@@ -280,6 +311,18 @@ def _strip_line_comment(line: str) -> str | None:
     return found[1] if found is not None else None
 
 
+def _is_prose_literal(body: str) -> bool:
+    """True if a string-literal body looks like prose worth scanning.
+
+    Only literals that look like prose are kept — they're the ones that can
+    carry hidden instructions. Short / pathy / format-string noise is skipped.
+    Shared by :func:`_extract_string_literals` (line-local literals) and the
+    ``\\`` line-continuation carry (fix-continued-string-body-unscanned) so the
+    two paths apply the SAME filter.
+    """
+    return len(body) >= 12 and " " in body
+
+
 def _extract_string_literals(line: str) -> list[str]:
     """Return quoted string-literal contents on ``line`` (non-trivial only).
 
@@ -292,9 +335,7 @@ def _extract_string_literals(line: str) -> list[str]:
     out: list[str] = []
     for m in _STRING_LITERAL_RE.finditer(line):
         body = (m.group(1) if m.group(1) is not None else m.group(2)).strip()
-        # Only keep literals that look like prose — they're the ones that can
-        # carry hidden instructions. Skip short / pathy / format-string noise.
-        if len(body) >= 12 and " " in body:
+        if _is_prose_literal(body):
             out.append(body)
     return out
 
@@ -342,7 +383,17 @@ def extract_surfaces_from_text(
     # so without threading this state a closing quote on the continued line is
     # misread as OPENING a string and a trailing ``#`` comment after it is
     # skipped as "inside an open string" — the injection is never scanned.
+    #
+    # v0.15.0 (fix-continued-string-body-unscanned): the carried string's BODY
+    # is now buffered too (``carried_buf``) and emitted as a STRING_LITERAL
+    # surface at ``carried_start_line`` when the string closes — previously the
+    # body up to the close was sliced away and never scanned, so an injection
+    # split across lines with ``\`` + newline inside a string literal scanned
+    # CLEAN while the identical single-line literal was flagged (a
+    # one-character evasion of the string_literal surface).
     carried_quote: str | None = None
+    carried_buf: list[str] = []
+    carried_start_line = 0
 
     for i, raw in enumerate(lines):
         lineno = base_line + i
@@ -392,13 +443,27 @@ def extract_surfaces_from_text(
         # ``#`` comment (and its injection). Skip to (and past) the real closer
         # so the remainder is scanned in closed-string mode; if no closer
         # arrives this line, the whole line stays inside the string and we keep
-        # carrying the quote.
+        # carrying the quote. The string's BODY (the buffered in-string parts
+        # plus the pre-close content of this line) is emitted as a
+        # STRING_LITERAL surface — it is readable text the agent will read, and
+        # it was previously dropped entirely (fix-continued-string-body-
+        # unscanned).
         if carried_quote is not None:
             close = _find_unescaped_quote(raw, carried_quote)
             if close == -1:
+                carried_buf.append(raw)
                 continue
+            carried_buf.append(raw[:close])
+            body = " ".join(part.strip() for part in carried_buf).strip()
+            if _is_prose_literal(body):
+                surfaces.append(
+                    Surface(
+                        body, file, carried_start_line, SurfaceKind.STRING_LITERAL
+                    )
+                )
             raw = raw[close + 1 :]
             carried_quote = None
+            carried_buf = []
 
         # --- start of a triple-quoted block? ---
         # A single-line triple's close leaves a remainder that may itself open
@@ -530,13 +595,25 @@ def extract_surfaces_from_text(
         # quote (e.g. an apostrophe in code like ``it's``) does NOT carry, so
         # the following line is still scanned as code and a comment there is
         # not swallowed (fix-line-continued-string-hides-trailing-comment).
+        # The still-open string's body (from its opening quote to end of line,
+        # minus the continuation backslash) is buffered so it can be emitted
+        # when the string closes on a later line
+        # (fix-continued-string-body-unscanned).
         # Every path that ``continue``s above (a still-open triple or block, a
         # newly opened triple/block, or a found line comment) leaves
         # ``carried_quote`` at ``None`` for the next line, which is correct:
         # those multi-line states are tracked by ``in_triple`` / ``in_block``
         # instead, and a line comment runs to end-of-line.
         quote, escaped = _quote_state(raw, None)
-        carried_quote = quote if escaped else None
+        if quote is not None and escaped:
+            carried_quote = quote
+            carried_start_line = lineno
+            start = _open_string_start(raw)
+            body = raw[start + 1 :] if start != -1 else raw
+            carried_buf = [body[:-1]]  # drop the trailing continuation backslash
+        else:
+            carried_quote = None
+            carried_buf = []
 
     # An unterminated triple-quote (truncated file / diff hunk) — flush it.
     if in_triple is not None and triple_buf:
@@ -544,6 +621,16 @@ def extract_surfaces_from_text(
         if doc:
             surfaces.append(
                 Surface(doc, file, triple_start_line, SurfaceKind.DOCSTRING)
+            )
+
+    # An unterminated ``\``-continued string (truncated file / diff hunk) —
+    # flush its buffered body the same way (fix-continued-string-body-
+    # unscanned).
+    if carried_quote is not None and carried_buf:
+        body = " ".join(part.strip() for part in carried_buf).strip()
+        if _is_prose_literal(body):
+            surfaces.append(
+                Surface(body, file, carried_start_line, SurfaceKind.STRING_LITERAL)
             )
 
     return surfaces

@@ -20,6 +20,7 @@ Comments, documentation and commit messages can contain instructions addressed t
 - **Locate the instruction** — Findings retain file, line, surface, rule and rationale.
 - **Include decoded text** — The optional decode pass adds base64, hex and Unicode-normalized variants.
 - **Fit repository review** — Scan a path, added diff lines with commit messages, or saved GitHub PR-files JSON.
+- **Do not miss split strings** — an injection inside a string literal split across lines by a `\` continuation is still joined and scanned as a string surface (v0.15.0).
 
 ## Architecture
 
@@ -92,7 +93,9 @@ The first example intentionally returns 1. --diff requires a valid Git reference
 
 ## Configuration
 
-Repeat --rules with YAML files or directories to stack rule packs; later same-ID rules override earlier ones. --baseline selects an accepted-findings file, default .promptshield-baseline.yaml. --update-baseline writes all current findings and exits 0, so use it only after reviewing the findings. --no-decode disables decoding and --no-color disables terminal color. HIGH findings exit 1; MED and LOW findings alone do not.
+Repeat --rules with YAML files or directories to stack rule packs; later same-ID rules override earlier ones. --baseline selects an accepted-findings file, default .promptshield-baseline.yaml. --update-baseline writes all current findings and exits 0, so use it only after reviewing the findings. --no-decode disables decoding and --no-color disables terminal color. HIGH findings exit 1; MED and LOW findings alone do not. A baseline file that cannot be read (e.g. pointed at a directory) or that is malformed / not valid UTF-8 fails with a clean error instead of a traceback (v0.15.0).
+
+This repository ships its own .promptshield-baseline.yaml and runs its own gate in CI: roughly a hundred reviewed self-findings are suppressed by the baseline while a new injection still turns the check red (as of v0.15.0). After intentionally adding text that trips the rules, run `promptshield scan . --update-baseline` and commit the refreshed baseline.
 
 ## Integrations and responsibilities
 

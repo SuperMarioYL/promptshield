@@ -20,6 +20,7 @@ PromptShield 扫描编程 Agent 可能读取的文本，用源码位置标出提
 - **定位指令来源** — 发现项保留文件、行号、文本类型、规则及原因。
 - **检查解码后文本** — 默认解码阶段增加 Base64、十六进制和 Unicode 归一化变体。
 - **融入仓库审查** — 可扫描路径、Diff 新增行及提交信息，或保存的 GitHub PR 文件 JSON。
+- **不漏掉拆开的字符串** — 字符串字面量内的注入即使被 `\` 续行拆到多行，也按字符串表面拼接扫描（v0.15.0）。
 
 ## 架构
 
@@ -92,7 +93,9 @@ Scope: deterministic static fixture scan; no fixture code executed and no model 
 
 ## 配置
 
-可重复传入 --rules YAML 文件或目录叠加规则，后来的同 ID 规则覆盖前者。--baseline 指定接受项文件，默认 .promptshield-baseline.yaml。--update-baseline 会写入全部当前发现并返回 0，因此应在审阅之后使用。--no-decode 关闭解码，--no-color 关闭终端颜色。HIGH 返回 1，仅有 MED 或 LOW 不会。
+可重复传入 --rules YAML 文件或目录叠加规则，后来的同 ID 规则覆盖前者。--baseline 指定接受项文件，默认 .promptshield-baseline.yaml。--update-baseline 会写入全部当前发现并返回 0，因此应在审阅之后使用。--no-decode 关闭解码，--no-color 关闭终端颜色。HIGH 返回 1，仅有 MED 或 LOW 不会。基线文件无法读取（如误指向目录）或编码/语法损坏时，以清晰错误退出而不是堆栈跟踪（v0.15.0）。
+
+本仓库自身随源码附带 .promptshield-baseline.yaml，并在 CI 中运行自己的门禁：自检中约百条已审阅的自身命中被基线抑制，新增注入仍会使检查变红（v0.15.0 起）。有意新增会触发规则的文本后，请运行 `promptshield scan . --update-baseline` 并提交更新的基线。
 
 ## 集成与职责分工
 

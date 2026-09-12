@@ -200,16 +200,28 @@ def scan(
     # saved as Latin-1/CP1252 during a hand-edit) raised an uncaught
     # ``UnicodeDecodeError`` (a ``ValueError``, NOT a ``yaml.YAMLError``) and
     # crashed the CLI with a raw traceback — the encoding sibling v0.8.0 missed.
-    # Widen the except tuple to also catch ``UnicodeDecodeError`` so a
-    # bad-encoding baseline surfaces the same clean, path-aware error.
+    #
+    # v0.15.0 (fix-baseline-load-dir-crash): the guard still missed the plain
+    # OS-level read failure — ``--baseline`` is a plain string with no
+    # ``click.Path`` validation (unlike ``--rules`` / ``--pr``, which get
+    # Click's readable check), so a path that EXISTS but cannot be read as a
+    # file (a directory, or an unreadable file) reaches ``Baseline.load``'s
+    # ``read_text`` and raises ``IsADirectoryError`` / ``PermissionError`` —
+    # both ``OSError``, neither a ``yaml.YAMLError`` nor a
+    # ``UnicodeDecodeError`` — crashing the CLI with a raw traceback. The
+    # unguarded LOAD-side sibling of the WRITE guard below
+    # (fix-update-baseline-write-unguarded-oserror). ``FileNotFoundError``
+    # cannot reach this guard (``Baseline.load`` pre-checks ``p.exists()`` and
+    # returns an empty baseline), so widening the tuple to ``OSError`` catches
+    # exactly the cannot-read class.
     try:
         active_baseline = (
             Baseline.empty() if update_baseline else Baseline.load(baseline_path)
         )
-    except (yaml.YAMLError, UnicodeDecodeError) as exc:
+    except (yaml.YAMLError, UnicodeDecodeError, OSError) as exc:
         raise click.ClickException(
-            f"baseline file {baseline_path} is malformed or not valid UTF-8: "
-            f"{exc}; fix the file and re-run"
+            f"baseline file {baseline_path} is malformed, not valid UTF-8, "
+            f"or cannot be read: {exc}; fix the file and re-run"
         ) from exc
     decode = not no_decode
 
