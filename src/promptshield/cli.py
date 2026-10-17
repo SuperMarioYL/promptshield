@@ -75,7 +75,12 @@ def main() -> None:
 
 
 @main.command()
-@click.argument("path", required=False, default=".", type=click.Path())
+@click.argument(
+    "path",
+    required=False,
+    default=".",
+    type=click.Path(exists=True),
+)
 @click.option(
     "--diff",
     "diff_ref",
@@ -203,7 +208,7 @@ def scan(
     #
     # v0.15.0 (fix-baseline-load-dir-crash): the guard still missed the plain
     # OS-level read failure — ``--baseline`` is a plain string with no
-    # ``click.Path`` validation (unlike ``--rules`` / ``--pr``, which get
+    # click.Path validation (unlike ``--rules`` / ``--pr``, which get
     # Click's readable check), so a path that EXISTS but cannot be read as a
     # file (a directory, or an unreadable file) reaches ``Baseline.load``'s
     # ``read_text`` and raises ``IsADirectoryError`` / ``PermissionError`` —
@@ -214,14 +219,23 @@ def scan(
     # cannot reach this guard (``Baseline.load`` pre-checks ``p.exists()`` and
     # returns an empty baseline), so widening the tuple to ``OSError`` catches
     # exactly the cannot-read class.
+    #
+    # v0.16.0 (fix-baseline-invalid-structure-silent-or-crash): the guard
+    # also missed the STRUCTURAL siblings — a baseline whose YAML root is a
+    # list loaded silently as an EMPTY baseline (every accepted fingerprint
+    # disabled, the next scan re-flags everything, no error), and a baseline
+    # with a scalar ``findings`` crashed with a raw ``TypeError``.
+    # ``Baseline.load`` now raises ``ValueError`` for both, and the tuple is
+    # widened to convert it into the same clean error.
     try:
         active_baseline = (
             Baseline.empty() if update_baseline else Baseline.load(baseline_path)
         )
-    except (yaml.YAMLError, UnicodeDecodeError, OSError) as exc:
+    except (yaml.YAMLError, UnicodeDecodeError, OSError, ValueError) as exc:
         raise click.ClickException(
             f"baseline file {baseline_path} is malformed, not valid UTF-8, "
-            f"or cannot be read: {exc}; fix the file and re-run"
+            f"cannot be read, or has an invalid structure: {exc}; "
+            f"fix the file and re-run"
         ) from exc
     decode = not no_decode
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "promptshield"
-version = "0.15.0"
+version = "0.16.0"
 description = "Static prompt-injection scanner for repository text, diffs and PR files, with source evidence, rule packs, baselines and SARIF output."
 readme = "README.md"
 requires-python = ">=3.12"

@@ -224,8 +224,13 @@
       }
     ]
   },
-  "content_version": "v0.15.0",
+  "content_version": "v0.16.0",
   "changelog": [
+    {
+      "version": "v0.16.0",
+      "en": "promptshield v0.16.0 closes two one-append evasions of the comment surface: appending a block-comment opener (`/* anything */`) or a triple-quote delimiter (`'''`) after an injection comment used to make the comment text vanish from every scan mode — the earliest line-comment marker on a line now wins, so the whole comment is scanned. Also: a baseline file whose structure a hand-edit broke (a top-level list, or a scalar findings value) now fails loudly with a clean error instead of silently disabling all suppression or crashing, and a typo'd scan path (e.g. `promptshield scan ./sorc`) is a usage error instead of a vacuous green \"0 findings, exit 0\" gate.",
+      "zh": "promptshield v0.16.0 封堵两条「追加一个字符即可绕过」的注释面逃逸：在注入注释后面追加块注释定界符（`/* 任意内容 */`）或三引号定界符（`'''`），此前会让整条注释从所有扫描模式中消失——现在一行内最先出现的行注释标记获胜，整条注释都会被扫描。同时：被手工改坏结构的 baseline 文件（顶层列表、标量 findings）现在给出干净错误，而不是静默禁用全部抑制或直接崩溃；扫描路径敲错（如 `promptshield scan ./sorc`）现在是用法错误，而不是「0 findings、exit 0」的虚假绿灯。"
+    },
     {
       "version": "v0.15.0",
       "en": "promptshield v0.15.0 makes its own CI gate green: the repo now ships a committed .promptshield-baseline.yaml (the README's documented adoption workflow), so `promptshield scan .` on the tool's own tree suppresses ~100 reviewed self-findings while a new injection still fails the gate. Also: an injection inside a backslash line-continued string literal is now scanned (previously a one-character evasion — the body was silently dropped), and an unreadable --baseline path (e.g. a directory) surfaces a clean error instead of a raw traceback.",

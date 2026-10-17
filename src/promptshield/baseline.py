@@ -42,12 +42,35 @@ class Baseline:
 
     @classmethod
     def load(cls, path: str | Path) -> Baseline:
-        """Load a baseline file; missing file yields an empty baseline."""
+        """Load a baseline file; missing file yields an empty baseline.
+
+        A structurally-invalid document (a top-level list or scalar — e.g. a
+        hand-edit that dropped the ``findings:`` mapping header) raises
+        ``ValueError`` instead of silently loading as EMPTY: a silent empty
+        baseline disables every accepted fingerprint, so the next scan
+        re-flags everything and the CI gate goes red with no clue why
+        (fix-baseline-invalid-structure-silent-or-crash). The CLI converts
+        the ValueError into a clean ``click.ClickException``; direct library
+        callers see the ValueError.
+        """
         p = Path(path)
         if not p.exists():
             return cls.empty()
         data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        entries = data.get("findings", []) if isinstance(data, dict) else []
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"baseline file {path} is malformed: expected a mapping "
+                f"with a 'findings' list, got {type(data).__name__}"
+            )
+        entries = data.get("findings", [])
+        if not isinstance(entries, list):
+            # Iterating a scalar here used to raise an uncaught TypeError
+            # (`for e in 5`) that escaped the CLI's load guard as a raw
+            # traceback (fix-baseline-invalid-structure-silent-or-crash).
+            raise ValueError(
+                f"baseline file {path} is malformed: 'findings' must be a "
+                f"list, got {type(entries).__name__}"
+            )
         fps = {
             e["fingerprint"]
             for e in entries
