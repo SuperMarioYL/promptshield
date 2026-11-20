@@ -53,6 +53,16 @@
         "en": "Scan a path, added diff lines with commit messages, or saved GitHub PR-files JSON.",
         "zh": "可扫描路径、Diff 新增行及提交信息，或保存的 GitHub PR 文件 JSON。"
       }
+    },
+    {
+      "title": {
+        "en": "Keep same-line text",
+        "zh": "不丢同一行文本"
+      },
+      "body": {
+        "en": "Every inline block comment on a line, an earlier triple-quoted body, and prose after an escaped closer are scanned; a diff with non-UTF-8 bytes still scans (v0.17.0).",
+        "zh": "一行内的多个块注释、更早的三引号正文以及转义定界符之后的正文都会扫描；含非 UTF-8 字节的 diff 也照常扫描（v0.17.0）。"
+      }
     }
   ],
   "demo": {
@@ -224,8 +234,13 @@
       }
     ]
   },
-  "content_version": "v0.16.0",
+  "content_version": "v0.17.0",
   "changelog": [
+    {
+      "version": "v0.17.0",
+      "en": "promptshield v0.17.0 closes three delimiter-coverage holes that each scanned CLEAN while the same injection in a plain comment is HIGH: a second block comment on one line, a `'''` docstring opening on a line that also carries `\"\"\"`, and docstring prose after a backslash-escaped closer. It also stops one non-UTF-8 byte in a diff from aborting the whole `--diff` scan (it now decodes with replacement, like path scans), and removes a duplicate regex search per rule pattern.",
+      "zh": "promptshield v0.17.0 封堵三处定界符覆盖漏洞——一行内的第二个块注释、与 `\"\"\"` 同行的 `'''` docstring，以及转义定界符之后的 docstring 正文，此前都会扫出「干净」结果，而同样内容放进普通注释就是 HIGH。同时：diff 中出现一个非 UTF-8 字节不再让整次 `--diff` 扫描中断（与路径扫描一致，按替换字符解码）；每条规则模式也不再重复执行一次正则搜索。"
+    },
     {
       "version": "v0.16.0",
       "en": "promptshield v0.16.0 closes two one-append evasions of the comment surface: appending a block-comment opener (`/* anything */`) or a triple-quote delimiter (`'''`) after an injection comment used to make the comment text vanish from every scan mode — the earliest line-comment marker on a line now wins, so the whole comment is scanned. Also: a baseline file whose structure a hand-edit broke (a top-level list, or a scalar findings value) now fails loudly with a clean error instead of silently disabling all suppression or crashing, and a typo'd scan path (e.g. `promptshield scan ./sorc`) is a usage error instead of a vacuous green \"0 findings, exit 0\" gate.",

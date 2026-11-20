@@ -21,6 +21,7 @@ Comments, documentation and commit messages can contain instructions addressed t
 - **Include decoded text** — The optional decode pass adds base64, hex and Unicode-normalized variants.
 - **Fit repository review** — Scan a path, added diff lines with commit messages, or saved GitHub PR-files JSON.
 - **Do not miss split strings** — an injection inside a string literal split across lines by a `\` continuation is still joined and scanned as a string surface (v0.15.0).
+- **Keep same-line text** — Every inline block comment on a line, a triple-quoted body sharing a line with the other triple style, and docstring prose after an escaped closer are all scanned; non-UTF-8 bytes in a diff decode with replacement instead of aborting the scan (v0.17.0).
 
 ## Architecture
 

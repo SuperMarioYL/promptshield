@@ -99,11 +99,17 @@ class Rule:
         """Return a Finding if this rule fires on ``surface``, else None."""
         if self.surfaces is not None and surface.kind not in self.surfaces:
             return None
-        hit = next(
-            (p.search(surface.text) for p in self.patterns
-             if p.search(surface.text)),
-            None,
-        )
+        # Search each pattern ONCE: the previous
+        # ``next((p.search(t) for p in self.patterns if p.search(t)), None)``
+        # ran the same regex twice for the matching pattern — a flat 2x cost
+        # on the scanner's hottest loop (surfaces x rules x patterns). First
+        # match still wins, so behaviour is unchanged
+        # (quality-rule-match-double-search).
+        hit: re.Match | None = None
+        for pattern in self.patterns:
+            hit = pattern.search(surface.text)
+            if hit is not None:
+                break
         if hit is None:
             return None
         if self.requires and not all(r.search(surface.text) for r in self.requires):

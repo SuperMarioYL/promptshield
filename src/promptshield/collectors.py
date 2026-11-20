@@ -208,6 +208,36 @@ def _find_unescaped_quote(line: str, quote: str) -> int:
     return -1
 
 
+def _find_unescaped_delimiter(text: str, delimiter: str) -> int:
+    """Index of the first unescaped ``delimiter`` in ``text``, or -1.
+
+    A backslash escapes the following character *inside* a string, so a
+    delimiter preceded by an ODD number of backslashes (``\\"\\"\\"``) is string
+    content, not a terminator — Python keeps the docstring open and the
+    following lines are still prose the agent reads. The bare ``str.find``
+    both triple-close paths used before treated that escaped delimiter as the
+    close, flipping the rest of the file into code mode and dropping the
+    instructions after it (fix-escaped-triple-closer). An even backslash run
+    (``\\\\\\"\\"\\"``) is an escaped backslash followed by a real delimiter.
+
+    Runs in one forward pass: each skipped candidate's backward scan covers its
+    own disjoint backslash run, so the work stays linear in ``len(text)``.
+    """
+    start = 0
+    while True:
+        found = text.find(delimiter, start)
+        if found == -1:
+            return -1
+        backslashes = 0
+        i = found - 1
+        while i >= 0 and text[i] == "\\":
+            backslashes += 1
+            i -= 1
+        if backslashes % 2 == 0:
+            return found
+        start = found + len(delimiter)
+
+
 def _open_string_start(line: str) -> int:
     """Index of the quote char that opened the string still open at EOL, or -1.
 
@@ -401,7 +431,7 @@ def extract_surfaces_from_text(
         # --- inside a triple-quoted docstring/string ---
         if in_triple is not None:
             closer = in_triple
-            end = raw.find(closer)
+            end = _find_unescaped_delimiter(raw, closer)
             if end == -1:
                 triple_buf.append(raw)
                 continue
@@ -482,17 +512,22 @@ def extract_surfaces_from_text(
         # the m6 fix-triple-single-line-close-drops-trailing-content `break`).
         opened_triple = False
         while True:
-            # Pick the first triple-quote STYLE (in _TRIPLE_QUOTES order) that
-            # appears on the remainder — same selection rule as before, so the
-            # earlier single-line-triple + trailing-comment path is unchanged.
+            # Pick the EARLIEST triple-quote delimiter on the remainder. Choosing
+            # the first STYLE present in _TRIPLE_QUOTES order instead let a
+            # later ``"""`` shadow an earlier ``'''`` opener (or vice versa), so
+            # the earlier triple was never tracked and its multi-line body was
+            # scanned as code — plain prose instructions vanished
+            # (fix-triple-delimiter-earliest-position). Ties cannot occur
+            # (different delimiters occupy different indices).
             q: str | None = None
             idx = -1
             for cand in _TRIPLE_QUOTES:
                 i = raw.find(cand)
-                if i != -1:
+                if i == -1:
+                    continue
+                if idx == -1 or i < idx:
                     q = cand
                     idx = i
-                    break
             if q is None:
                 break
             # A line comment that STARTS before this delimiter wins the line:
@@ -516,7 +551,7 @@ def extract_surfaces_from_text(
                     Surface(lit, file, lineno, SurfaceKind.STRING_LITERAL)
                 )
             rest = raw[idx + len(q) :]
-            close = rest.find(q)
+            close = _find_unescaped_delimiter(rest, q)
             if close != -1:
                 # single-line triple-quoted string. Scan the docstring, then
                 # reassign raw to the post-close REMAINDER and LOOP to re-detect
@@ -545,11 +580,28 @@ def extract_surfaces_from_text(
             continue
 
         # --- start of a block comment? ---
+        # Re-detect the EARLIEST opener on the current ``raw`` in a loop, the
+        # same way the triple-quote loop above does. Iterating the pair list
+        # once processed at most one opener per pair: after an inline close it
+        # advanced to the next PAIR instead of rescanning the remainder, so a
+        # second sibling block comment on the same line was never scanned
+        # (``/* reviewed */ /* ignore all previous instructions */`` yielded
+        # only "reviewed" — fix-inline-block-comment-repeat). Each inline close
+        # strictly shortens ``raw`` (the closer is non-empty), so the loop
+        # terminates; an opener-less remainder breaks out to the line-comment /
+        # string-literal branches below.
         opened_block = False
-        for opener, closer in _BLOCK_COMMENT_PAIRS:
-            idx = raw.find(opener)
-            if idx == -1:
-                continue
+        while True:
+            candidate: tuple[int, str, str] | None = None
+            for opener, closer in _BLOCK_COMMENT_PAIRS:
+                idx = raw.find(opener)
+                if idx == -1:
+                    continue
+                if candidate is None or idx < candidate[0]:
+                    candidate = (idx, opener, closer)
+            if candidate is None:
+                break
+            idx, opener, closer = candidate
             # A line comment that STARTS before this opener wins the line:
             # in the real language semantics everything after the marker is
             # comment text, so a ``/*`` (or ``<!--``) after a ``#`` / ``//``
@@ -906,6 +958,14 @@ def collect_diff(ref: str, *, repo: str | Path = ".") -> list[Surface]:
             ["git", "-C", repo, "diff", "--unified=3", "--no-color", ref],
             capture_output=True,
             text=True,
+            # Decode leniently, exactly like _read_text does for file scans: a
+            # Latin-1/CP1252 source file or a binary patch in the diff would
+            # otherwise raise UnicodeDecodeError from the strict locale codec
+            # and abort the ENTIRE diff scan (the CLI turns it into a bare
+            # codec error with no findings), losing every parsed hunk
+            # (fix-diff-non-utf8-aborts-scan).
+            encoding="utf-8",
+            errors="replace",
             check=True,
         ).stdout
     except FileNotFoundError as exc:  # git not installed
@@ -928,6 +988,8 @@ def _collect_commit_messages(ref: str, repo: str) -> list[Surface]:
              "--format=%H%x00%B%x00", f"{ref}..HEAD"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",  # same lenient decode as the diff above
             check=True,
         ).stdout
     except (FileNotFoundError, subprocess.CalledProcessError):
